@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Trappy Testnet</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #090c10;
+      --card-bg: rgba(22, 27, 34, 0.72);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(30, 37, 46, 0.9);
+      --text-primary: #f0f6fc;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --accent-blue: #2f81f7;
+      --accent-cyan: #38bdf8;
+      --accent-green: #2ea043;
+      --accent-purple: #a855f7;
+      --accent-trx: #ef4444;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-pill: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: radial-gradient(130% 70% at 50% -15%, rgba(47, 129, 247, 0.16) 0%, rgba(9, 12, 16, 0) 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 12px;
+      background: rgba(46, 160, 67, 0.12);
+      border: 1px solid rgba(46, 160, 67, 0.28);
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 600;
+      color: #3fb950;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: #3fb950;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #3fb950;
+    }
+
+    .address-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: all 0.15s ease;
+    }
+
+    .address-chip:active {
+      transform: scale(0.96);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+    }
+
+    /* Balance Hero */
+    .hero-balance {
+      text-align: center;
+      padding: 12px 0 28px;
+    }
+
+    .balance-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .balance-amount {
+      font-size: 46px;
+      font-weight: 700;
+      letter-spacing: -1.2px;
+      line-height: 1.05;
+      font-feature-settings: "tnum";
+      color: #ffffff;
+      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+    }
+
+    .balance-sub {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* Action Buttons (Modern Circular Action Row) */
+    .action-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 28px;
+      margin-bottom: 32px;
+    }
+
+    .action-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .action-circle {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, rgba(33, 40, 50, 0.95), rgba(22, 27, 34, 0.95));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+      transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .action-circle svg {
+      width: 24px;
+      height: 24px;
+      stroke-width: 2.2;
+    }
+
+    .action-item:active .action-circle {
+      transform: scale(0.92);
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 16px rgba(47, 129, 247, 0.4);
+    }
+
+    .action-item span {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Segmented Navigation */
+    .tab-bar {
+      display: flex;
+      background: rgba(22, 27, 34, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-pill);
+      padding: 4px;
+      margin-bottom: 18px;
+      gap: 4px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 8px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn.active {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Asset List */
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .asset-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(14px);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .asset-card:active {
+      transform: scale(0.985);
+      background: var(--card-hover);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .asset-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .coin-icon-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .coin-usdt { background: #26a17b; }
+    .coin-trx { background: #ef0027; }
+    .coin-trappy { background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%); }
+
+    .coin-meta h4 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+      letter-spacing: -0.2px;
+      margin-bottom: 2px;
+    }
+
+    .coin-meta p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .asset-right {
+      text-align: right;
+    }
+
+    .coin-amount {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      font-feature-settings: "tnum";
+      margin-bottom: 2px;
+    }
+
+    .coin-fiat {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-feature-settings: "tnum";
+    }
+
+    /* Modal Bottom Sheet */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: flex-end;
+      z-index: 999;
+      animation: fadeIn 0.15s ease;
+    }
+
+    .modal-sheet {
+      width: 100%;
+      background: #161b22;
+      border-top: 1px solid var(--card-border);
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px 36px;
+      animation: slideUp 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+    }
+
+    .sheet-title {
+      font-size: 18px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .sheet-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .sheet-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent-blue);
+      color: #ffffff;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .sheet-btn.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-secondary);
+    }
+
+    .sheet-btn:active {
+      transform: scale(0.98);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      padding: 10px 22px;
+      border-radius: var(--radius-pill);
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="status-badge">
+      <div class="pulse-dot"></div>
+      <span>Testnet v1.1.5</span>
+    </div>
+    <div class="address-chip" id="walletChip" onclick="copyWallet()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span id="walletIdDisplay">TRP-9051</span>
+    </div>
+  </div>
+
+  <!-- Balance Hero -->
+  <div class="hero-balance">
+    <div class="balance-label">Total Balance</div>
+    <div class="balance-amount" id="totalUsdDisplay">$0.00</div>
+    <div class="balance-sub">
+      <span>Simulated Testnet Assets</span>
+    </div>
+  </div>
+
+  <!-- Action Row -->
+  <div class="action-row">
+    <div class="action-item" onclick="openSendModal()">
+      <div class="action-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="7" y1="17" x2="17" y2="7"></line>
+          <polyline points="7 7 17 7 17 17"></polyline>
+        </svg>
+      </div>
+      <span>Send</span>
+    </div>
+
+    <div class="action-item" onclick="openDepositModal()">
+      <div class="action-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <polyline points="19 12 12 19 5 12"></polyline>
+        </svg>
+      </div>
+      <span>Deposit</span>
+    </div>
+
+    <div class="action-item" onclick="openGiveawayModal()">
+      <div class="action-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 12 20 22 4 22 4 12"></polyline>
+          <rect x="2" y="7" width="20" height="5"></rect>
+          <line x1="12" y1="22" x2="12" y2="7"></line>
+          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
+          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+        </svg>
+      </div>
+      <span>Giveaway</span>
+    </div>
+  </div>
+
+  <!-- Tab Controller -->
+  <div class="tab-bar">
+    <div class="tab-btn active" id="tabAssets" onclick="switchTab('assets')">Assets (3)</div>
+    <div class="tab-btn" id="tabActivity" onclick="switchTab('activity')">Activity</div>
+  </div>
+
+  <!-- Asset List -->
+  <div class="asset-list" id="assetsContainer">
+    <!-- Rendered via JS -->
+  </div>
+
+  <!-- Activity List (Hidden by default) -->
+  <div class="asset-list" id="activityContainer" style="display: none;">
+    <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="opacity: 0.4; margin-bottom: 12px;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <p style="font-size: 14px; font-weight: 500;">No transactions yet</p>
+      <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Send coins or claim from deposit to see history.</p>
+    </div>
+  </div>
+
+  <!-- Deposit / Faucet Modal -->
+  <div class="modal-overlay" id="depositModal" onclick="closeModalOnOverlay(event, 'depositModal')">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Deposit Testnet Crypto</div>
+      <div class="sheet-desc">Claim free test coins or copy your receiving address</div>
+      
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 12px; margin-bottom: 16px; text-align: center;">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">RECEIVING ADDRESS</div>
+        <div style="font-family: monospace; font-size: 14px; color: #ffffff;" id="modalWalletId">TRP-9051</div>
+      </div>
+
+      <button class="sheet-btn" onclick="copyWallet()">📋 Copy Address</button>
+      <button class="sheet-btn secondary" onclick="closeModal('depositModal')">Close</button>
+    </div>
+  </div>
+
+  <!-- Send Modal -->
+  <div class="modal-overlay" id="sendModal" onclick="closeModalOnOverlay(event, 'sendModal')">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Send Testnet Crypto</div>
+      <div class="sheet-desc">Transfer coins directly to any Telegram username</div>
+      
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Quick Transfer Syntax:</div>
+        <code style="display: block; font-size: 13px; color: var(--accent-cyan); background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;">$10 @username</code>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Type directly in chat or in channels where the bot is added!</div>
+      </div>
+
+      <button class="sheet-btn" onclick="closeModal('sendModal'); tg && tg.close();">Open Telegram Chat</button>
+      <button class="sheet-btn secondary" onclick="closeModal('sendModal')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Giveaway Modal -->
+  <div class="modal-overlay" id="giveawayModal" onclick="closeModalOnOverlay(event, 'giveawayModal')">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Create a Giveaway</div>
+      <div class="sheet-desc">Host claimable rewards in channels & groups</div>
+      
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Giveaway Command:</div>
+        <code style="display: block; font-size: 13px; color: var(--accent-cyan); background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;">/giveaway 1000 TRAPPY 5</code>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Channel giveaways: <code>/channel_giveaway 5000 TRAPPY 10 @trappytestnet</code></div>
+      </div>
+
+      <button class="sheet-btn" onclick="closeModal('giveawayModal'); tg && tg.close();">Open Telegram Chat</button>
+      <button class="sheet-btn secondary" onclick="closeModal('giveawayModal')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toastMessage">Copied to clipboard</div>
+
+  <script>
+    const tg = window.Telegram ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.expand();
+      tg.setHeaderColor('#090c10');
+      tg.setBackgroundColor('#090c10');
+    }
+
+    const cryptos = [
+      {
+        sym: 'USDT',
+        name: 'Tether',
+        rate: 1.0,
+        bal: 0,
+        cls: 'coin-usdt',
+        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.93v2.07h-2v-2.07c-3.13-.3-5-1.57-5-3.43 0-1.86 1.87-3.13 5-3.43V8.5h-3V6.5h8v2h-3v1.57c3.13.3 5 1.57 5 3.43 0 1.86-1.87 3.13-5 3.43z" fill="#ffffff"/><ellipse cx="12" cy="13.5" rx="4" ry="1.2" fill="#ffffff" opacity="0.3"/></svg>`
+      },
+      {
+        sym: 'TRX',
+        name: 'TRON',
+        rate: 0.16,
+        bal: 0,
+        cls: 'coin-trx',
+        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 4-6 12L4 4z" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/><path d="M4 4l10 16" stroke="#ffffff" stroke-width="1.6"/><path d="M20 8l-6 12" stroke="#ffffff" stroke-width="1.6"/></svg>`
+      },
+      {
+        sym: 'TRAPPY',
+        name: 'Trappy',
+        rate: 0.25,
+        bal: 0,
+        cls: 'coin-trappy',
+        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#ffffff"/></svg>`
+      }
+    ];
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const rawWallet = urlParams.get('wallet') || 'TRP-9051';
+    document.getElementById('walletIdDisplay').innerText = rawWallet;
+    document.getElementById('modalWalletId').innerText = rawWallet;
+
+    let totalUsd = 0;
+    cryptos.forEach(c => {
+      const p = urlParams.get(c.sym.toLowerCase());
+      if (p) c.bal = parseFloat(p) || 0;
+      totalUsd += c.bal * c.rate;
+    });
+
+    document.getElementById('totalUsdDisplay').innerText = '$' + totalUsd.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+    // Render Assets
+    const container = document.getElementById('assetsContainer');
+    container.innerHTML = cryptos.map(c => `
+      <div class="asset-card" onclick="selectAsset('${c.sym}')">
+        <div class="asset-left">
+          <div class="coin-icon-wrap ${c.cls}">
+            ${c.svg}
+          </div>
+          <div class="coin-meta">
+            <h4>${c.name}</h4>
+            <p>${c.sym} · $${c.rate.toFixed(2)}</p>
+          </div>
+        </div>
+        <div class="asset-right">
+          <div class="coin-amount">${c.bal.toLocaleString()} ${c.sym}</div>
+          <div class="coin-fiat">$${(c.bal * c.rate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+        </div>
+      </div>
+    `).join('');
+
+    function copyWallet() {
+      navigator.clipboard.writeText(rawWallet);
+      showToast('Address copied to clipboard');
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toastMessage');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2200);
+    }
+
+    function switchTab(tab) {
+      if (tab === 'assets') {
+        document.getElementById('tabAssets').classList.add('active');
+        document.getElementById('tabActivity').classList.remove('active');
+        document.getElementById('assetsContainer').style.display = 'flex';
+        document.getElementById('activityContainer').style.display = 'none';
+      } else {
+        document.getElementById('tabActivity').classList.add('active');
+        document.getElementById('tabAssets').classList.remove('active');
+        document.getElementById('assetsContainer').style.display = 'none';
+        document.getElementById('activityContainer').style.display = 'block';
+      }
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    }
+
+    function openSendModal() {
+      document.getElementById('sendModal').style.display = 'flex';
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function openDepositModal() {
+      document.getElementById('depositModal').style.display = 'flex';
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function openGiveawayModal() {
+      document.getElementById('giveawayModal').style.display = 'flex';
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    function closeModalOnOverlay(e, id) {
+      if (e.target.id === id) closeModal(id);
+    }
+
+    function selectAsset(sym) {
+      showToast(`${sym} selected`);
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    }
+  </script>
+</body>
+</html>
