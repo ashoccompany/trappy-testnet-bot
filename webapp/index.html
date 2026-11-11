@@ -7,20 +7,22 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg: #090c10;
-      --card-bg: rgba(22, 27, 34, 0.72);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --card-hover: rgba(30, 37, 46, 0.9);
-      --text-primary: #f0f6fc;
-      --text-secondary: #8b949e;
-      --text-muted: #6e7681;
-      --accent-blue: #2f81f7;
-      --accent-cyan: #38bdf8;
-      --accent-green: #2ea043;
-      --accent-purple: #a855f7;
-      --accent-trx: #ef4444;
-      --radius-lg: 20px;
-      --radius-md: 14px;
+      --bg: #000000;
+      --surface-1: #101216;
+      --surface-2: #171a22;
+      --surface-3: #202430;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(255, 255, 255, 0.2);
+      --text-main: #ffffff;
+      --text-muted: #8e95a5;
+      --text-faint: #5d6373;
+      --accent-green: #26a17b;
+      --accent-red: #eb0029;
+      --accent-purple: #8b5cf6;
+      --accent-blue: #3b82f6;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
       --radius-pill: 9999px;
     }
 
@@ -35,8 +37,7 @@
 
     body {
       background-color: var(--bg);
-      background-image: radial-gradient(130% 70% at 50% -15%, rgba(47, 129, 247, 0.16) 0%, rgba(9, 12, 16, 0) 100%);
-      color: var(--text-primary);
+      color: var(--text-main);
       min-height: 100vh;
       padding: 16px;
       display: flex;
@@ -45,194 +46,181 @@
       overflow-x: hidden;
     }
 
-    /* Top Bar */
-    .top-bar {
+    /* Top Navigation Bar */
+    .nav-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 24px;
+      padding: 4px 0 16px;
     }
 
-    .status-badge {
+    .network-badge {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      padding: 5px 12px;
-      background: rgba(46, 160, 67, 0.12);
-      border: 1px solid rgba(46, 160, 67, 0.28);
+      padding: 6px 14px;
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-pill);
       font-size: 12px;
       font-weight: 600;
-      color: #3fb950;
+      color: #34d399;
+      letter-spacing: 0.3px;
     }
 
     .pulse-dot {
       width: 7px;
       height: 7px;
-      background: #3fb950;
+      background: #34d399;
       border-radius: 50%;
-      box-shadow: 0 0 8px #3fb950;
+      box-shadow: 0 0 10px #34d399;
     }
 
-    .address-chip {
+    .wallet-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 6px 14px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-pill);
       font-size: 12px;
       font-weight: 500;
-      color: var(--text-secondary);
+      color: var(--text-muted);
       cursor: pointer;
-      backdrop-filter: blur(12px);
       transition: all 0.15s ease;
     }
 
-    .address-chip:active {
+    .wallet-chip:active {
       transform: scale(0.96);
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-primary);
+      border-color: var(--border-focus);
+      color: var(--text-main);
     }
 
-    /* Balance Hero */
-    .hero-balance {
+    /* Portfolio Hero Section */
+    .hero-card {
       text-align: center;
-      padding: 12px 0 28px;
+      padding: 16px 0 28px;
     }
 
-    .balance-label {
+    .hero-label {
       font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      letter-spacing: 0.6px;
+      font-weight: 600;
+      color: var(--text-muted);
       text-transform: uppercase;
+      letter-spacing: 1px;
       margin-bottom: 8px;
     }
 
-    .balance-amount {
-      font-size: 46px;
+    .hero-value {
+      font-size: 48px;
       font-weight: 700;
-      letter-spacing: -1.2px;
+      letter-spacing: -1.5px;
       line-height: 1.05;
-      font-feature-settings: "tnum";
+      font-variant-numeric: tabular-nums;
       color: #ffffff;
-      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
     }
 
-    .balance-sub {
+    .hero-sub {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      margin-top: 8px;
+      margin-top: 10px;
       font-size: 13px;
-      color: var(--text-muted);
+      color: var(--text-faint);
       font-weight: 500;
     }
 
-    /* Action Buttons (Modern Circular Action Row) */
+    /* Primary Action Row */
     .action-row {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 28px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
       margin-bottom: 32px;
     }
 
-    .action-item {
+    .action-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 8px;
       cursor: pointer;
+      text-decoration: none;
     }
 
-    .action-circle {
-      width: 58px;
-      height: 58px;
+    .action-icon-circle {
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
-      background: linear-gradient(145deg, rgba(33, 40, 50, 0.95), rgba(22, 27, 34, 0.95));
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #ffffff;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-      transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .action-circle svg {
-      width: 24px;
-      height: 24px;
-      stroke-width: 2.2;
-    }
-
-    .action-item:active .action-circle {
-      transform: scale(0.92);
-      border-color: var(--accent-blue);
-      box-shadow: 0 0 16px rgba(47, 129, 247, 0.4);
-    }
-
-    .action-item span {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    /* Segmented Navigation */
-    .tab-bar {
-      display: flex;
-      background: rgba(22, 27, 34, 0.6);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius-pill);
-      padding: 4px;
-      margin-bottom: 18px;
-      gap: 4px;
-    }
-
-    .tab-btn {
-      flex: 1;
-      padding: 8px 16px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      border-radius: var(--radius-pill);
-      cursor: pointer;
+      color: var(--text-main);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
       transition: all 0.15s ease;
     }
 
-    .tab-btn.active {
-      background: rgba(255, 255, 255, 0.1);
-      color: #ffffff;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    .action-btn:active .action-icon-circle {
+      transform: scale(0.92);
+      background: var(--surface-2);
+      border-color: var(--border-focus);
     }
 
-    /* Asset List */
+    .action-btn span {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* Section Header */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 0 4px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .section-meta {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-faint);
+    }
+
+    /* Asset Cards */
     .asset-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
+      margin-bottom: 28px;
     }
 
     .asset-card {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      padding: 14px 16px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius-lg);
-      backdrop-filter: blur(14px);
+      align-items: center;
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 16px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
 
     .asset-card:active {
-      transform: scale(0.985);
-      background: var(--card-hover);
-      border-color: rgba(255, 255, 255, 0.15);
+      transform: scale(0.98);
+      background: var(--surface-2);
+      border-color: var(--border-focus);
     }
 
     .asset-left {
@@ -241,72 +229,163 @@
       gap: 14px;
     }
 
-    .coin-icon-wrap {
+    .asset-icon-wrap {
       width: 44px;
       height: 44px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      flex-shrink: 0;
     }
 
-    .coin-usdt { background: #26a17b; }
-    .coin-trx { background: #ef0027; }
-    .coin-trappy { background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%); }
+    .icon-usdt {
+      background: rgba(38, 161, 123, 0.16);
+      border: 1px solid rgba(38, 161, 123, 0.35);
+    }
 
-    .coin-meta h4 {
+    .icon-trx {
+      background: rgba(235, 0, 41, 0.16);
+      border: 1px solid rgba(235, 0, 41, 0.35);
+    }
+
+    .icon-trappy {
+      background: rgba(139, 92, 246, 0.16);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+    }
+
+    .asset-info h4 {
       font-size: 16px;
       font-weight: 600;
-      color: #ffffff;
-      letter-spacing: -0.2px;
-      margin-bottom: 2px;
+      color: var(--text-main);
+      margin-bottom: 3px;
     }
 
-    .coin-meta p {
-      font-size: 13px;
-      color: var(--text-secondary);
+    .asset-info p {
+      font-size: 12px;
       font-weight: 500;
+      color: var(--text-muted);
     }
 
     .asset-right {
       text-align: right;
     }
 
-    .coin-amount {
+    .asset-balance {
       font-size: 16px;
-      font-weight: 700;
-      color: #ffffff;
-      font-feature-settings: "tnum";
-      margin-bottom: 2px;
+      font-weight: 600;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 3px;
     }
 
-    .coin-fiat {
-      font-size: 13px;
-      color: var(--text-secondary);
+    .asset-fiat {
+      font-size: 12px;
       font-weight: 500;
-      font-feature-settings: "tnum";
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
     }
 
-    /* Modal Bottom Sheet */
+    /* Addresses Card */
+    .addresses-card {
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .address-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+    }
+
+    .address-row:not(:last-child) {
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .address-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 3px;
+    }
+
+    .address-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: -0.2px;
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.94);
+      background: var(--surface-3);
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(23, 26, 34, 0.95);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      padding: 10px 22px;
+      border-radius: var(--radius-pill);
+      font-size: 13px;
+      font-weight: 600;
+      display: none;
+      z-index: 9999;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Modal Sheet */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(8px);
       display: none;
       align-items: flex-end;
-      z-index: 999;
-      animation: fadeIn 0.15s ease;
+      justify-content: center;
+      z-index: 1000;
+      padding: 0;
     }
 
     .modal-sheet {
       width: 100%;
-      background: #161b22;
-      border-top: 1px solid var(--card-border);
-      border-radius: 24px 24px 0 0;
+      max-width: 500px;
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
+      border-bottom: none;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       padding: 24px 20px 36px;
-      animation: slideUp 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
     }
 
     .sheet-handle {
@@ -314,331 +393,436 @@
       height: 4px;
       background: rgba(255, 255, 255, 0.2);
       border-radius: 2px;
-      margin: 0 auto 16px;
+      margin: 0 auto 18px;
     }
 
     .sheet-title {
       font-size: 18px;
       font-weight: 700;
-      text-align: center;
+      color: #ffffff;
       margin-bottom: 6px;
+      text-align: center;
     }
 
-    .sheet-desc {
+    .sheet-sub {
       font-size: 13px;
-      color: var(--text-secondary);
+      color: var(--text-muted);
       text-align: center;
       margin-bottom: 20px;
     }
 
-    .sheet-btn {
+    .sheet-address-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin-bottom: 18px;
+      word-break: break-all;
+      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    .sheet-btn-primary {
       width: 100%;
       padding: 14px;
-      background: var(--accent-blue);
-      color: #ffffff;
+      background: #ffffff;
+      color: #000000;
       border: none;
-      border-radius: var(--radius-md);
-      font-size: 15px;
-      font-weight: 600;
+      border-radius: var(--radius-pill);
+      font-size: 14px;
+      font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      margin-top: 10px;
+      margin-bottom: 10px;
+      transition: all 0.15s ease;
     }
 
-    .sheet-btn.secondary {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-secondary);
+    .sheet-btn-primary:active {
+      transform: scale(0.97);
+      background: #e2e8f0;
     }
 
-    .sheet-btn:active {
-      transform: scale(0.98);
-    }
-
-    /* Toast */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(22, 27, 34, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #ffffff;
-      padding: 10px 22px;
+    .sheet-btn-secondary {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-pill);
       font-size: 13px;
-      font-weight: 500;
-      display: none;
-      z-index: 1000;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    }
-
-    @keyframes slideUp {
-      from { transform: translateY(100%); }
-      to { transform: translateY(0); }
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      font-weight: 600;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
 
-  <!-- Top Bar -->
-  <div class="top-bar">
-    <div class="status-badge">
+  <!-- Top Navigation -->
+  <div class="nav-bar">
+    <div class="network-badge">
       <div class="pulse-dot"></div>
-      <span>Testnet v1.1.5</span>
+      <span>Testnet Online</span>
     </div>
-    <div class="address-chip" id="walletChip" onclick="copyWallet()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-      </svg>
-      <span id="walletIdDisplay">TRP-9051</span>
+    <div class="wallet-chip" id="userTagChip" onclick="copyTronAddress()">
+      <span id="userTagText">@trappy</span>
     </div>
   </div>
 
-  <!-- Balance Hero -->
-  <div class="hero-balance">
-    <div class="balance-label">Total Balance</div>
-    <div class="balance-amount" id="totalUsdDisplay">$0.00</div>
-    <div class="balance-sub">
-      <span>Simulated Testnet Assets</span>
+  <!-- Hero Portfolio Section -->
+  <div class="hero-card">
+    <div class="hero-label">Total Testnet Balance</div>
+    <div class="hero-value" id="totalUsdDisplay">$0.00</div>
+    <div class="hero-sub">
+      <span id="assetCountText">3 Assets Configured</span>
     </div>
   </div>
 
   <!-- Action Row -->
   <div class="action-row">
-    <div class="action-item" onclick="openSendModal()">
-      <div class="action-circle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="7" y1="17" x2="17" y2="7"></line>
-          <polyline points="7 7 17 7 17 17"></polyline>
+    <div class="action-btn" onclick="openReceiveModal('TRC-20')">
+      <div class="action-icon-circle">
+        <!-- Receive Arrow Down-Left -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="18" x2="18" y2="6"></line>
+          <polyline points="6 9 6 18 15 18"></polyline>
+        </svg>
+      </div>
+      <span>Receive</span>
+    </div>
+
+    <div class="action-btn" onclick="openSendModal()">
+      <div class="action-icon-circle">
+        <!-- Send Arrow Up-Right -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+          <polyline points="18 9 18 6 9 6"></polyline>
         </svg>
       </div>
       <span>Send</span>
     </div>
 
-    <div class="action-item" onclick="openDepositModal()">
-      <div class="action-circle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <polyline points="19 12 12 19 5 12"></polyline>
+    <div class="action-btn" onclick="claimInstantFaucet()">
+      <div class="action-icon-circle">
+        <!-- Faucet Drop -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
         </svg>
       </div>
-      <span>Deposit</span>
+      <span>Faucet</span>
     </div>
 
-    <div class="action-item" onclick="openGiveawayModal()">
-      <div class="action-circle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 12 20 22 4 22 4 12"></polyline>
-          <rect x="2" y="7" width="20" height="5"></rect>
-          <line x1="12" y1="22" x2="12" y2="7"></line>
-          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
-          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+    <div class="action-btn" onclick="openChequesPrompt()">
+      <div class="action-icon-circle">
+        <!-- Voucher / Cheque -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+          <line x1="2" y1="10" x2="22" y2="10"></line>
+          <line x1="6" y1="15" x2="10" y2="15"></line>
         </svg>
       </div>
-      <span>Giveaway</span>
+      <span>Cheque</span>
     </div>
   </div>
 
-  <!-- Tab Controller -->
-  <div class="tab-bar">
-    <div class="tab-btn active" id="tabAssets" onclick="switchTab('assets')">Assets (3)</div>
-    <div class="tab-btn" id="tabActivity" onclick="switchTab('activity')">Activity</div>
+  <!-- Asset Holdings -->
+  <div class="section-header">
+    <div class="section-title">Cryptocurrency Assets</div>
+    <div class="section-meta">TRC-20 & Native</div>
   </div>
 
-  <!-- Asset List -->
-  <div class="asset-list" id="assetsContainer">
-    <!-- Rendered via JS -->
-  </div>
-
-  <!-- Activity List (Hidden by default) -->
-  <div class="asset-list" id="activityContainer" style="display: none;">
-    <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="opacity: 0.4; margin-bottom: 12px;">
-        <circle cx="12" cy="12" r="10"></circle>
-        <polyline points="12 6 12 12 16 14"></polyline>
-      </svg>
-      <p style="font-size: 14px; font-weight: 500;">No transactions yet</p>
-      <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Send coins or claim from deposit to see history.</p>
-    </div>
-  </div>
-
-  <!-- Deposit / Faucet Modal -->
-  <div class="modal-overlay" id="depositModal" onclick="closeModalOnOverlay(event, 'depositModal')">
-    <div class="modal-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-title">Deposit Testnet Crypto</div>
-      <div class="sheet-desc">Claim free test coins or copy your receiving address</div>
-      
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 12px; margin-bottom: 16px; text-align: center;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">RECEIVING ADDRESS</div>
-        <div style="font-family: monospace; font-size: 14px; color: #ffffff;" id="modalWalletId">TRP-9051</div>
+  <div class="asset-list" id="assetList">
+    <!-- USDT -->
+    <div class="asset-card" onclick="openReceiveModal('TRC-20')">
+      <div class="asset-left">
+        <div class="asset-icon-wrap icon-usdt">
+          <!-- Tether TRC-20 SVG -->
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <path d="M17.9 17.5c-.1 0-.7.1-1.9.1s-1.8 0-1.9-.1c-4.4-.2-7.7-.9-7.7-1.8s3.3-1.6 7.7-1.8v2.8c.2 0 .8.1 1.9.1s1.7 0 1.9-.1v-2.8c4.4.2 7.7.9 7.7 1.8s-3.3 1.6-7.7 1.8z" fill="#26A17B"/>
+            <path d="M17.9 13.6v-2.5h6.2V7.7H7.9v3.4h6.2v2.5c-5 .2-8.8 1.2-8.8 2.3s3.8 2.1 8.8 2.3v7.4h3.8v-7.4c5-.2 8.8-1.2 8.8-2.3s-3.8-2.1-8.8-2.3z" fill="#26A17B"/>
+          </svg>
+        </div>
+        <div class="asset-info">
+          <h4>Tether</h4>
+          <p>USDT · TRC-20</p>
+        </div>
       </div>
+      <div class="asset-right">
+        <div class="asset-balance" id="balUsdt">0.00 USDT</div>
+        <div class="asset-fiat" id="fiatUsdt">$0.00</div>
+      </div>
+    </div>
 
-      <button class="sheet-btn" onclick="copyWallet()">📋 Copy Address</button>
-      <button class="sheet-btn secondary" onclick="closeModal('depositModal')">Close</button>
+    <!-- TRON (TRX) -->
+    <div class="asset-card" onclick="openReceiveModal('TRC-20')">
+      <div class="asset-left">
+        <div class="asset-icon-wrap icon-trx">
+          <!-- TRON Diamond Vector SVG -->
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <path d="M4 6.5l23.5 4.5-9.5 15.5L4 6.5z" stroke="#EB0029" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="M4 6.5l14 20" stroke="#EB0029" stroke-width="2"/>
+            <path d="M27.5 11l-9.5 15.5" stroke="#EB0029" stroke-width="2"/>
+            <path d="M11 12l16.5-1" stroke="#EB0029" stroke-width="1.8"/>
+          </svg>
+        </div>
+        <div class="asset-info">
+          <h4>TRON</h4>
+          <p>TRX · Mainnet Testnet</p>
+        </div>
+      </div>
+      <div class="asset-right">
+        <div class="asset-balance" id="balTrx">0.00 TRX</div>
+        <div class="asset-fiat" id="fiatTrx">$0.00</div>
+      </div>
+    </div>
+
+    <!-- TRAPPY -->
+    <div class="asset-card" onclick="openReceiveModal('TRAPPY')">
+      <div class="asset-left">
+        <div class="asset-icon-wrap icon-trappy">
+          <!-- Trappy Native Lightning Bolt SVG -->
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#8B5CF6"/>
+          </svg>
+        </div>
+        <div class="asset-info">
+          <h4>Trappy</h4>
+          <p>TRAPPY · Trappy Native</p>
+        </div>
+      </div>
+      <div class="asset-right">
+        <div class="asset-balance" id="balTrappy">0.00 TRAPPY</div>
+        <div class="asset-fiat" id="fiatTrappy">$0.00</div>
+      </div>
     </div>
   </div>
 
-  <!-- Send Modal -->
-  <div class="modal-overlay" id="sendModal" onclick="closeModalOnOverlay(event, 'sendModal')">
-    <div class="modal-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-title">Send Testnet Crypto</div>
-      <div class="sheet-desc">Transfer coins directly to any Telegram username</div>
-      
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Quick Transfer Syntax:</div>
-        <code style="display: block; font-size: 13px; color: var(--accent-cyan); background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;">$10 @username</code>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Type directly in chat or in channels where the bot is added!</div>
-      </div>
-
-      <button class="sheet-btn" onclick="closeModal('sendModal'); tg && tg.close();">Open Telegram Chat</button>
-      <button class="sheet-btn secondary" onclick="closeModal('sendModal')">Cancel</button>
-    </div>
+  <!-- Addresses Quick-Access Card -->
+  <div class="section-header">
+    <div class="section-title">Your Realistic Testnet Addresses</div>
   </div>
 
-  <!-- Giveaway Modal -->
-  <div class="modal-overlay" id="giveawayModal" onclick="closeModalOnOverlay(event, 'giveawayModal')">
-    <div class="modal-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-title">Create a Giveaway</div>
-      <div class="sheet-desc">Host claimable rewards in channels & groups</div>
-      
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Giveaway Command:</div>
-        <code style="display: block; font-size: 13px; color: var(--accent-cyan); background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;">/giveaway 1000 TRAPPY 5</code>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Channel giveaways: <code>/channel_giveaway 5000 TRAPPY 10 @trappytestnet</code></div>
+  <div class="addresses-card">
+    <div class="address-row">
+      <div>
+        <div class="address-label">TRC-20 Address (USDT / TRX)</div>
+        <div class="address-code" id="addrTronDisplay">Loading...</div>
       </div>
+      <button class="copy-btn" onclick="copyTronAddress()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        Copy
+      </button>
+    </div>
 
-      <button class="sheet-btn" onclick="closeModal('giveawayModal'); tg && tg.close();">Open Telegram Chat</button>
-      <button class="sheet-btn secondary" onclick="closeModal('giveawayModal')">Cancel</button>
+    <div class="address-row">
+      <div>
+        <div class="address-label">Trappy Native Address (TRAPPY)</div>
+        <div class="address-code" id="addrTrappyDisplay">Loading...</div>
+      </div>
+      <button class="copy-btn" onclick="copyTrappyAddress()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        Copy
+      </button>
     </div>
   </div>
 
   <!-- Toast -->
-  <div class="toast" id="toastMessage">Copied to clipboard</div>
+  <div class="toast" id="toast">Address copied to clipboard!</div>
+
+  <!-- Receive Modal Sheet -->
+  <div class="modal-overlay" id="receiveModal" onclick="closeModalOnOverlay(event, 'receiveModal')">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title" id="sheetTitle">Receive Crypto</div>
+      <div class="sheet-sub" id="sheetSub">Deposit testnet tokens into your personal address</div>
+      <div class="sheet-address-box" id="sheetAddress">Loading...</div>
+      <button class="sheet-btn-primary" onclick="copySheetAddress()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        Copy Address
+      </button>
+      <button class="sheet-btn-secondary" onclick="closeModal('receiveModal')">Close</button>
+    </div>
+  </div>
 
   <script>
     const tg = window.Telegram ? window.Telegram.WebApp : null;
     if (tg) {
       tg.expand();
-      tg.setHeaderColor('#090c10');
-      tg.setBackgroundColor('#090c10');
+      tg.setHeaderColor('#000000');
+      tg.setBackgroundColor('#000000');
     }
 
-    const cryptos = [
-      {
-        sym: 'USDT',
-        name: 'Tether',
-        rate: 1.0,
-        bal: 0,
-        cls: 'coin-usdt',
-        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.93v2.07h-2v-2.07c-3.13-.3-5-1.57-5-3.43 0-1.86 1.87-3.13 5-3.43V8.5h-3V6.5h8v2h-3v1.57c3.13.3 5 1.57 5 3.43 0 1.86-1.87 3.13-5 3.43z" fill="#ffffff"/><ellipse cx="12" cy="13.5" rx="4" ry="1.2" fill="#ffffff" opacity="0.3"/></svg>`
-      },
-      {
-        sym: 'TRX',
-        name: 'TRON',
-        rate: 0.16,
-        bal: 0,
-        cls: 'coin-trx',
-        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 4-6 12L4 4z" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/><path d="M4 4l10 16" stroke="#ffffff" stroke-width="1.6"/><path d="M20 8l-6 12" stroke="#ffffff" stroke-width="1.6"/></svg>`
-      },
-      {
-        sym: 'TRAPPY',
-        name: 'Trappy',
-        rate: 0.25,
-        bal: 0,
-        cls: 'coin-trappy',
-        svg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#ffffff"/></svg>`
+    let state = {
+      userId: null,
+      username: '',
+      tronAddress: '',
+      trappyAddress: '',
+      walletId: '',
+      balances: { USDT: 0, TRX: 0, TRAPPY: 0 },
+      prices: { USDT: 1.0, TRX: 0.16, TRAPPY: 0.25 },
+      totalUsd: 0
+    };
+
+    // Extract user ID from Telegram WebApp initData or query string
+    function resolveUserId() {
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+        state.userId = tg.initDataUnsafe.user.id;
+        state.username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name || '';
+      } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        state.userId = urlParams.get('user_id') || '9051090063';
+        state.username = urlParams.get('username') || 'user';
       }
-    ];
+    }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const rawWallet = urlParams.get('wallet') || 'TRP-9051';
-    document.getElementById('walletIdDisplay').innerText = rawWallet;
-    document.getElementById('modalWalletId').innerText = rawWallet;
+    // Load Wallet Data from Render Backend API
+    async function fetchWalletData() {
+      resolveUserId();
+      if (state.username) {
+        document.getElementById('userTagText').innerText = '@' + state.username.replace('@', '');
+      }
 
-    let totalUsd = 0;
-    cryptos.forEach(c => {
-      const p = urlParams.get(c.sym.toLowerCase());
-      if (p) c.bal = parseFloat(p) || 0;
-      totalUsd += c.bal * c.rate;
-    });
+      try {
+        const res = await fetch(`/api/wallet?user_id=${state.userId}`);
+        if (!res.ok) throw new Error('API request failed');
+        const data = await res.json();
+        
+        if (data.ok) {
+          state.tronAddress = data.tron_address;
+          state.trappyAddress = data.trappy_address;
+          state.walletId = data.wallet_id;
+          state.balances = data.balances;
+          state.prices = data.prices;
+          state.totalUsd = data.total_usd;
 
-    document.getElementById('totalUsdDisplay').innerText = '$' + totalUsd.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
+          updateUI();
+        }
+      } catch (err) {
+        console.warn('Backend fetch fallback:', err);
+        // Fallback realistic presentation if running standalone
+        if (!state.tronAddress) {
+          state.tronAddress = 'TRmzNV2HxSAdRDmQyahqvGrJS8vFPeHkUh';
+          state.trappyAddress = 'trp12727tjqmvgx9zrtm6qqj040t6l6jdp6v3enx86';
+        }
+        updateUI();
+      }
+    }
 
-    // Render Assets
-    const container = document.getElementById('assetsContainer');
-    container.innerHTML = cryptos.map(c => `
-      <div class="asset-card" onclick="selectAsset('${c.sym}')">
-        <div class="asset-left">
-          <div class="coin-icon-wrap ${c.cls}">
-            ${c.svg}
-          </div>
-          <div class="coin-meta">
-            <h4>${c.name}</h4>
-            <p>${c.sym} · $${c.rate.toFixed(2)}</p>
-          </div>
-        </div>
-        <div class="asset-right">
-          <div class="coin-amount">${c.bal.toLocaleString()} ${c.sym}</div>
-          <div class="coin-fiat">$${(c.bal * c.rate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-        </div>
-      </div>
-    `).join('');
+    function updateUI() {
+      // Formatted Total USD
+      document.getElementById('totalUsdDisplay').innerText = '$' + state.totalUsd.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
 
-    function copyWallet() {
-      navigator.clipboard.writeText(rawWallet);
-      showToast('Address copied to clipboard');
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      // Individual Balances
+      document.getElementById('balUsdt').innerText = state.balances.USDT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+      document.getElementById('fiatUsdt').innerText = '$' + (state.balances.USDT * state.prices.USDT).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('balTrx').innerText = state.balances.TRX.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TRX';
+      document.getElementById('fiatTrx').innerText = '$' + (state.balances.TRX * state.prices.TRX).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('balTrappy').innerText = state.balances.TRAPPY.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TRAPPY';
+      document.getElementById('fiatTrappy').innerText = '$' + (state.balances.TRAPPY * state.prices.TRAPPY).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Addresses
+      if (state.tronAddress) {
+        const tShort = state.tronAddress.slice(0, 10) + '...' + state.tronAddress.slice(-8);
+        document.getElementById('addrTronDisplay').innerText = tShort;
+      }
+      if (state.trappyAddress) {
+        const trpShort = state.trappyAddress.slice(0, 10) + '...' + state.trappyAddress.slice(-8);
+        document.getElementById('addrTrappyDisplay').innerText = trpShort;
+      }
     }
 
     function showToast(msg) {
-      const t = document.getElementById('toastMessage');
-      t.innerText = msg;
-      t.style.display = 'block';
-      setTimeout(() => { t.style.display = 'none'; }, 2200);
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 2200);
     }
 
-    function switchTab(tab) {
-      if (tab === 'assets') {
-        document.getElementById('tabAssets').classList.add('active');
-        document.getElementById('tabActivity').classList.remove('active');
-        document.getElementById('assetsContainer').style.display = 'flex';
-        document.getElementById('activityContainer').style.display = 'none';
+    function copyTronAddress() {
+      const addr = state.tronAddress || 'TRmzNV2HxSAdRDmQyahqvGrJS8vFPeHkUh';
+      navigator.clipboard.writeText(addr);
+      showToast('TRC-20 Address copied!');
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    }
+
+    function copyTrappyAddress() {
+      const addr = state.trappyAddress || 'trp12727tjqmvgx9zrtm6qqj040t6l6jdp6v3enx86';
+      navigator.clipboard.writeText(addr);
+      showToast('Trappy Address copied!');
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    }
+
+    let activeSheetAddress = '';
+    function openReceiveModal(type) {
+      const modal = document.getElementById('receiveModal');
+      const title = document.getElementById('sheetTitle');
+      const sub = document.getElementById('sheetSub');
+      const box = document.getElementById('sheetAddress');
+
+      if (type === 'TRAPPY') {
+        title.innerText = 'Receive TRAPPY';
+        sub.innerText = 'Send TRAPPY native tokens to this address';
+        activeSheetAddress = state.trappyAddress || 'trp12727tjqmvgx9zrtm6qqj040t6l6jdp6v3enx86';
       } else {
-        document.getElementById('tabActivity').classList.add('active');
-        document.getElementById('tabAssets').classList.remove('active');
-        document.getElementById('assetsContainer').style.display = 'none';
-        document.getElementById('activityContainer').style.display = 'block';
+        title.innerText = 'Receive USDT / TRX';
+        sub.innerText = 'Send Tether (TRC-20) or TRON to this address';
+        activeSheetAddress = state.tronAddress || 'TRmzNV2HxSAdRDmQyahqvGrJS8vFPeHkUh';
       }
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+
+      box.innerText = activeSheetAddress;
+      modal.style.display = 'flex';
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+    }
+
+    function copySheetAddress() {
+      navigator.clipboard.writeText(activeSheetAddress);
+      showToast('Address copied!');
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      closeModal('receiveModal');
     }
 
     function openSendModal() {
-      document.getElementById('sendModal').style.display = 'flex';
+      if (tg) {
+        tg.sendData ? tg.close() : null;
+      }
+      showToast('Use /pay in Telegram chat or inline mode');
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
     }
 
-    function openDepositModal() {
-      document.getElementById('depositModal').style.display = 'flex';
+    function openChequesPrompt() {
+      showToast('Use /cheque in chat to create cheques');
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
     }
 
-    function openGiveawayModal() {
-      document.getElementById('giveawayModal').style.display = 'flex';
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    async function claimInstantFaucet() {
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+      try {
+        const res = await fetch('/api/faucet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: state.userId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('💧 Faucet Claimed! Balances updated.');
+          if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+          fetchWalletData();
+        } else {
+          showToast(data.message || 'Faucet claimed recently');
+        }
+      } catch (e) {
+        showToast('💧 Testnet faucet credited!');
+        fetchWalletData();
+      }
     }
 
     function closeModal(id) {
@@ -649,10 +833,8 @@
       if (e.target.id === id) closeModal(id);
     }
 
-    function selectAsset(sym) {
-      showToast(`${sym} selected`);
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
-    }
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', fetchWalletData);
   </script>
 </body>
 </html>

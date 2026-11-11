@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trappy Testnet v1.1.5 - Database Module
+Trappy Testnet - Database Module
 Ledger for USDT, TRX, and TRAPPY.
 """
 import sqlite3
@@ -20,7 +20,7 @@ def generate_tron_address(user_id):
     Generates a realistic 34-character TRC-20 / TRON testnet address starting with 'T'.
     Deterministic for each user_id.
     """
-    h = hashlib.sha512(f"trappy_tron_v2_{user_id}".encode()).digest()
+    h = hashlib.sha512(f"trappy_tron_net_{user_id}".encode()).digest()
     return "T" + "".join(BASE58_ALPHABET[b % len(BASE58_ALPHABET)] for b in h[:33])
 
 def generate_trappy_address(user_id):
@@ -28,7 +28,7 @@ def generate_trappy_address(user_id):
     Generates a realistic 42-character Layer-1 Bech32 testnet address starting with 'trp1'.
     Deterministic for each user_id.
     """
-    h = hashlib.sha512(f"trappy_native_v2_{user_id}".encode()).digest()
+    h = hashlib.sha512(f"trappy_native_net_{user_id}".encode()).digest()
     return "trp1" + "".join(BECH32_ALPHABET[b % len(BECH32_ALPHABET)] for b in h[:38])
 
 def generate_wallet_id(user_id):
@@ -776,3 +776,19 @@ def cancel_invoice(invoice_id, user_id):
         conn.commit()
         conn.close()
         return True, "success"
+
+
+def claim_all_faucets(user_id):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        for curr, info in SUPPORTED_CRYPTOS.items():
+            amt = info['faucet_amount']
+            cursor.execute('''
+                INSERT INTO balances (user_id, currency, amount)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, currency) DO UPDATE SET amount = amount + ?
+            ''', (user_id, curr, amt, amt))
+        conn.commit()
+        conn.close()
+    return True, "success"

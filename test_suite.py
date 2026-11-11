@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trappy Testnet v1.1.5 - Test Suite
+Trappy Testnet  - Test Suite
 Verifies:
 1. 3 cryptos: USDT, TRX, TRAPPY
 2. Exact wallet text formatting

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trappy Testnet v1.1.5 - Main Telegram Bot
+Trappy Testnet - Main Telegram Bot
 Multi-Asset (USDT, TRX, TRAPPY) with Telegram Mini App & Inline Mention Transfers
 """
 import re
@@ -34,21 +34,116 @@ db.init_db()
 
 # Render Keep-Alive HTTP Health Server
 class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.end_headers()
+
     def do_GET(self):
-        if self.path in ['/', '/health', '/healthz']:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        
+        # 1. Serve Mini App HTML directly from Render (Zero redirects, instant load)
+        if path in ['/', '/wallet', '/index.html']:
+            html_path = os.path.join(os.path.dirname(__file__), "webapp", "index.html")
+            try:
+                with open(html_path, "r", encoding="utf-8") as f:
+                    content = f.read().encode("utf-8")
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.end_headers()
+                self.wfile.write(content)
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode('utf-8'))
+            return
+
+        # 2. Live Mini App Wallet API
+        if path == '/api/wallet':
+            qs = urllib.parse.parse_qs(parsed.query)
+            user_id_raw = qs.get('user_id', [None])[0]
+            if user_id_raw and str(user_id_raw).isdigit():
+                uid = int(user_id_raw)
+                user = db.get_or_create_user(uid)
+                balances = db.get_all_balances(uid)
+                total_usd = sum(balances.get(sym, 0.0) * info['usd_price'] for sym, info in config.SUPPORTED_CRYPTOS.items())
+                data = {
+                    "ok": True,
+                    "user_id": uid,
+                    "username": user.get('username', ''),
+                    "first_name": user.get('first_name', ''),
+                    "wallet_id": user.get('wallet_id', ''),
+                    "tron_address": user.get('tron_address', ''),
+                    "trappy_address": user.get('trappy_address', ''),
+                    "balances": {sym: round(balances.get(sym, 0.0), 2) for sym in config.SUPPORTED_CRYPTOS},
+                    "prices": {sym: info['usd_price'] for sym, info in config.SUPPORTED_CRYPTOS.items()},
+                    "total_usd": round(total_usd, 2)
+                }
+            else:
+                data = {"ok": False, "error": "Missing or invalid user_id parameter"}
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode('utf-8'))
+            return
+
+        # 3. Keep-alive health check for anti-sleeper
+        if path in ['/health', '/healthz']:
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             resp = json.dumps({
                 "status": "healthy",
                 "service": "trappy-testnet-bot",
-                "version": "1.1.5",
                 "assets": ["USDT", "TRX", "TRAPPY"]
             })
             self.wfile.write(resp.encode('utf-8'))
-        else:
-            self.send_response(404)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        import urllib.parse
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/api/faucet':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8') if length > 0 else '{}'
+                data = json.loads(body)
+                user_id_raw = data.get('user_id')
+                if user_id_raw and str(user_id_raw).isdigit():
+                    uid = int(user_id_raw)
+                    db.get_or_create_user(uid)
+                    db.claim_all_faucets(uid)
+                    balances = db.get_all_balances(uid)
+                    resp = {
+                        "ok": True,
+                        "message": "Testnet faucet credited successfully!",
+                        "balances": balances
+                    }
+                else:
+                    resp = {"ok": False, "error": "Invalid user_id"}
+            except Exception as e:
+                resp = {"ok": False, "error": str(e)}
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
+            self.wfile.write(json.dumps(resp).encode('utf-8'))
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
     def log_message(self, format, *args):
         pass
@@ -152,7 +247,7 @@ def send_wallet_message(chat_id, user_id):
         user = db.get_or_create_user(user_id)
         text = render_wallet_text(user_id)
         balances = db.get_all_balances(user_id)
-        user_url = f"{config.MINI_APP_URL}?wallet={user['wallet_id']}&usdt={balances.get('USDT', 0)}&trx={balances.get('TRX', 0)}&trappy={balances.get('TRAPPY', 0)}"
+        user_url = f"{config.MINI_APP_URL}?user_id={user_id}"
         
         bot.send_message(
             chat_id=chat_id,
@@ -221,22 +316,32 @@ def handle_start(message):
             return
 
     # First-time onboarding experience
-    if user.get('is_new'):
+    if user.get('is_new', False):
+        db.claim_all_faucets(user_id)
+        t_addr = user.get('tron_address') or db.generate_tron_address(user_id)
+        trp_addr = user.get('trappy_address') or db.generate_trappy_address(user_id)
         welcome_text = (
-            f"👋 <b>Welcome to Trappy Testnet, {first_name}!</b>\n\n"
-            "Trappy is your personal testnet crypto wallet inside Telegram.\n"
-            "Store, send, and create giveaways for testnet cryptocurrencies with zero fees and instant settlement.\n\n"
-            f"🏷️ <b>Your Personal Address:</b>\n<code>{user['wallet_id']}</code>\n\n"
-            "<b>Supported Assets:</b>\n"
-            "• <b>Tether</b> (USDT)\n"
-            "• <b>TRON</b> (TRX)\n"
-            "• <b>Trappy</b> (TRAPPY) — Native Token\n\n"
-            "To get started, tap <b>Deposit</b> below to claim your first free testnet coins or launch the <b>Wallet</b>!"
+            f"⚡ <b>Welcome to Trappy Testnet, {first_name}!</b>\n\n"
+            "Your professional multi-asset testnet crypto wallet is ready. Send, receive, and create "
+            "instant claimable cheques or payment requests in private chats, groups, and channels.\n\n"
+            "💎 <b>Supported Testnet Assets:</b>\n"
+            "• <b>USDT</b> — Tether (TRC-20, $1.00)\n"
+            "• <b>TRX</b> — TRON Network ($0.16)\n"
+            "• <b>TRAPPY</b> — Trappy Native ($0.25)\n\n"
+            "👛 <b>Your Testnet Deposit Addresses:</b>\n"
+            f"• <b>TRC-20:</b> <code>{t_addr}</code>\n"
+            f"• <b>Trappy:</b> <code>{trp_addr}</code>\n\n"
+            "🎁 <i>Your starter testnet balance has been credited so you can begin testing immediately!</i>"
         )
         try:
             bot.send_message(
                 chat_id=message.chat.id,
                 text=welcome_text,
+                reply_markup=kb.get_welcome_inline_keyboard()
+            )
+            bot.send_message(
+                chat_id=message.chat.id,
+                text="💡 <b>Quick Navigation:</b>",
                 reply_markup=kb.get_main_reply_keyboard()
             )
             send_wallet_message(message.chat.id, user_id)
@@ -383,7 +488,7 @@ def handle_btn_giveaways(message):
 
 def show_cheques_info(chat_id, user_id):
     is_owner = user_id in config.OWNER_IDS
-    owner_note = "\n\n👑 <b>Owner:</b> You have unlimited giveaway limits!" if is_owner else "\n\n⚠️ You can only giveaway crypto up to your wallet balance."
+    owner_note = ""
     txt = (
         "🎁 <b>Crypto Cheques & Giveaways</b>\n\n"
         "Create multi-user giveaways or direct cheques in channels and chats!\n\n"
@@ -398,7 +503,7 @@ def show_cheques_info(chat_id, user_id):
 @bot.message_handler(func=lambda m: m.text == "ℹ️ About")
 def handle_btn_about(message):
     txt = (
-        "⚡ <b>Trappy Testnet v1.1.5</b>\n\n"
+        "⚡ <b>Trappy Testnet</b>\n\n"
         "Simulated cryptocurrency wallet and giveaway platform.\n\n"
         "• <b>Channel:</b> @trappytestnet\n"
         "• <b>Ecosystem:</b> @trappyb0t\n"
@@ -433,49 +538,128 @@ MENTION_ADDCRYPTO_REGEX = re.compile(
     re.IGNORECASE
 )
 
+
+MENTION_CHEQUE_REGEX = re.compile(
+    r'(?:@(?:TrappyTestnetBot|TrappyTestnet|CryptoTestnetBot|trappytestnetbot|trappytestnet|trappy)\s+)?(?:cheque|check)\s+([\d.]+)\s*([a-zA-Z]+)(?:\s+(\d+))?(?:\s+(.*))?',
+    re.IGNORECASE
+)
+
+MENTION_INVOICE_REGEX = re.compile(
+    r'(?:@(?:TrappyTestnetBot|TrappyTestnet|CryptoTestnetBot|trappytestnetbot|trappytestnet|trappy)\s+)?invoice\s+([\d.]+)\s*([a-zA-Z]+)(?:\s+(.*))?',
+    re.IGNORECASE
+)
+
+MENTION_FAUCET_REGEX = re.compile(
+    r'@(?:TrappyTestnetBot|TrappyTestnet|CryptoTestnetBot|trappytestnetbot|trappytestnet|trappy)\s+(?:faucet|deposit)',
+    re.IGNORECASE
+)
+
 MENTION_WALLET_REGEX = re.compile(
     r'@(?:TrappyTestnetBot|TrappyTestnet|CryptoTestnetBot|trappytestnetbot|trappytestnet|trappy)\s+(?:wallet|balance)',
     re.IGNORECASE
 )
 
-@bot.message_handler(func=lambda m: bool(m.text and ('$' in m.text or any(alias in m.text.lower() for alias in config.BOT_ALIASES))))
-def handle_bot_mentions(message):
-    text = message.text.strip()
+def process_mention_or_command(message, text, is_channel=False):
     sender_id, sender_username, sender_name = get_message_sender(message)
     db.get_or_create_user(sender_id, sender_username, sender_name)
-    
-    # 1. Matching Photo: @CryptoTestnetBot $10 @username Comment...
+
+    # 1. Matching Dollar Pay: @TrappyTestnetBot $10 @username Comment...
     m_dollar = MENTION_DOLLAR_PAY_REGEX.search(text)
     if m_dollar:
         amount_str, target_username, comment = m_dollar.groups()
         execute_payment(message, sender_id, target_username, amount_str, "USDT", note=comment or "")
         return
-        
+
     # 2. Mention Pay: @TrappyTestnet pay @someusername 500 TRAPPY
     m_pay = MENTION_PAY_REGEX.search(text)
     if m_pay:
         target_username, amount_str, currency_raw, comment = m_pay.groups()
         execute_payment(message, sender_id, target_username, amount_str, currency_raw, note=comment or "")
         return
-        
-    # 3. Mention Giveaway: @TrappyTestnet giveaway 1000 TRAPPY 5
+
+    # 3. Mention Cheque: @TrappyTestnet cheque 1000 TRAPPY 5 [note]
+    m_cheque = MENTION_CHEQUE_REGEX.search(text)
+    if m_cheque:
+        amount_str, currency_raw, winners_str, comment = m_cheque.groups()
+        execute_create_cheque(message, sender_id, amount_str, currency_raw, winners_str or "1", note=comment or "")
+        return
+
+    # 4. Mention Invoice: @TrappyTestnet invoice 25 USDT [note]
+    m_invoice = MENTION_INVOICE_REGEX.search(text)
+    if m_invoice:
+        amount_str, currency_raw, comment = m_invoice.groups()
+        execute_create_invoice(message, sender_id, amount_str, currency_raw, note=comment or "")
+        return
+
+    # 5. Mention Giveaway: @TrappyTestnet giveaway 1000 TRAPPY 5
     m_gw = MENTION_GIVEAWAY_REGEX.search(text)
     if m_gw:
         amount_str, currency_raw, winners_str = m_gw.groups()
         execute_create_giveaway(message, sender_id, amount_str, currency_raw, winners_str)
         return
-        
-    # 4. Hidden Owner Addcrypto: @TrappyTestnet addcrypto @username 1000 USDT
+
+    # 6. Silent Owner Addcrypto: @TrappyTestnet addcrypto @username 1000 USDT
     m_add = MENTION_ADDCRYPTO_REGEX.search(text)
-    if m_add:
+    if m_add and sender_id in config.OWNER_IDS:
         target_str, amount_str, currency_raw = m_add.groups()
         execute_addcrypto(message, sender_id, target_str, amount_str, currency_raw)
         return
-        
-    # 5. Mention Wallet: @TrappyTestnet wallet
+
+    # 7. Mention Wallet: @TrappyTestnet wallet
     if MENTION_WALLET_REGEX.search(text):
         send_wallet_message(message.chat.id, sender_id)
         return
+
+    # 8. Mention Faucet: @TrappyTestnet faucet
+    if MENTION_FAUCET_REGEX.search(text):
+        show_deposit_options(message.chat.id, sender_id)
+        return
+
+    # 9. Pure Mention Fallback (When bot is tagged or mentioned in any chat/channel)
+    mention_resp = (
+        "⚡ <b>Trappy Testnet Bot</b> is active in this chat!\n\n"
+        "💡 <b>Available Inline & Mention Commands:</b>\n"
+        "• <code>@TrappyTestnetBot $10 @username [comment]</code> — Instant payment\n"
+        "• <code>@TrappyTestnetBot pay @username 50 USDT</code> — Transfer testnet crypto\n"
+        "• <code>@TrappyTestnetBot cheque 100 TRAPPY 5</code> — Multi-claim cheque\n"
+        "• <code>@TrappyTestnetBot invoice 25 USDT</code> — Request payment\n"
+        "• <code>@TrappyTestnetBot wallet</code> — Check your balance & addresses\n\n"
+        "Tap below to open your Web Wallet or manage assets:"
+    )
+    safe_reply(message, mention_resp, reply_markup=kb.get_mention_response_inline())
+
+@bot.message_handler(func=lambda m: bool(m.text and ('$' in m.text or any(alias in m.text.lower() for alias in config.BOT_ALIASES))))
+def handle_bot_mentions(message):
+    process_mention_or_command(message, message.text.strip(), is_channel=False)
+
+@bot.channel_post_handler(func=lambda cp: True)
+def handle_channel_posts(post):
+    text = (post.text or post.caption or "").strip()
+    if not text:
+        return
+    is_mentioned = any(alias in text.lower() for alias in config.BOT_ALIASES) or '$' in text or text.startswith('/')
+    if is_mentioned:
+        process_mention_or_command(post, text, is_channel=True)
+
+@bot.my_chat_member_handler()
+def handle_chat_member_update(update):
+    new_status = update.new_chat_member.status
+    chat = update.chat
+    if new_status in ['administrator', 'member']:
+        welcome_txt = (
+            f"⚡ <b>Trappy Testnet Connected to {chat.title}!</b>\n\n"
+            "This chat is now equipped with Trappy Testnet crypto capabilities.\n"
+            "Members can send testnet coins, claim cheques, and run community giveaways.\n\n"
+            "👇 Tap below to launch your Testnet Wallet:"
+        )
+        try:
+            bot.send_message(
+                chat.id,
+                welcome_txt,
+                reply_markup=kb.get_channel_connected_inline()
+            )
+        except Exception as e:
+            logger.warning(f"Could not send join message to chat {chat.id}: {e}")
 
 # ==============================================================================
 # SLASH COMMANDS: /pay & /giveaway
@@ -1363,9 +1547,9 @@ def handle_channel_post(message):
 # MAIN ENTRYPOINT
 # ==============================================================================
 def main():
-    logger.info("Starting Trappy Testnet v1.1.5 Bot on Localhost...")
+    logger.info("Starting Trappy Testnet Bot on Localhost...")
     print("==================================================================")
-    print("      TRAPPY TESTNET v1.1.5 TELEGRAM CRYPTO BOT")
+    print("      Trappy Testnet TELEGRAM CRYPTO BOT")
     print(f"      Bot Username: @{config.BOT_USERNAME}")
     print(f"      Official Channel: {config.OFFICIAL_CHANNEL}")
     print("      Assets: USDT, TRX, TRAPPY")

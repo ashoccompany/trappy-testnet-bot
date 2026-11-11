@@ -1,4 +1,4 @@
-# ⚡ Trappy Testnet v1.1.5
+# ⚡ Trappy Testnet 
 
 > **Authentic Telegram Crypto Testnet Bot**  
 > Localhost deployment in `C:\projects\TrappyTestnet`.
@@ -27,7 +27,7 @@
 
 ---
 
-## 🛠️ Features & Changes in v1.1.5
+## 🛠️ Features & Changes in 
 - **No Mining or Energy:** Completely removed.
 - **No Referrals:** Completely removed.
 - **No Exchange:** Removed 1k USDT testnet to real USDT exchange (pure testnet simulation).

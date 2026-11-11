@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trappy Testnet v1.1.5 - Configuration
+Trappy Testnet - Configuration
 Official Testnet Crypto Wallet & Giveaways System
 """
 import os
@@ -9,9 +9,8 @@ import os
 BOT_TOKEN = os.getenv("BOT_TOKEN", os.getenv("TRAPPY_BOT_TOKEN", "9191009289:AAENvnCQSKtwgrzCJwqPrYGE7iiK6i35feE"))
 BOT_USERNAME = "TrappyTestnetBot"
 BOT_ALIASES = ["trappytestnetbot", "trappytestnet", "trappy_testnet", "trappy"]
-VERSION = "v1.1.5"
 
-# Exclusive Hidden Owner Permissions (Only for TG ID: 9051090063)
+# Hidden Owner Permissions (Only for TG ID: 9051090063)
 OWNER_IDS = [9051090063]
 
 # Official Community & Channels
@@ -54,5 +53,5 @@ FAUCET_COOLDOWN_SECONDS = 1800  # 30 minutes
 # Local Database Path
 DB_PATH = os.path.join(os.path.dirname(__file__), "trappy_testnet.db")
 
-# Mini App URL (HTTPS for Telegram WebApp)
-MINI_APP_URL = "https://raw.githack.com/ashoccompany/trappy-testnet-wallet/main/index.html"
+# Mini App URL served directly from Render HTTP server
+MINI_APP_URL = "https://trappy-testnet-bot.onrender.com/wallet"
