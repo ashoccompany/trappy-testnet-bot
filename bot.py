@@ -37,7 +37,7 @@ db.init_db()
 class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         super().end_headers()
 
@@ -45,29 +45,50 @@ class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def do_HEAD(self):
+        # Ultra-lightweight HEAD response for uptime monitors (0 bytes)
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         import urllib.parse
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         
-        # 1. Serve Mini App HTML directly from Render (Zero redirects, instant load)
-        if path in ['/', '/wallet', '/index.html']:
+        # 1. Ultra-lightweight keep-alive for external cron jobs & anti-sleepers (Exactly 2 bytes: "OK")
+        # Prevents "data is big / response body too large" errors on free cron job services
+        if path in ['/', '/health', '/healthz', '/ping', '/keepalive', '/status']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', '2')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.end_headers()
+            self.wfile.write(b"OK")
+            return
+
+        # 2. Serve Mini App HTML strictly on /wallet and /index.html
+        if path in ['/wallet', '/index.html']:
             html_path = os.path.join(os.path.dirname(__file__), "webapp", "index.html")
             try:
                 with open(html_path, "r", encoding="utf-8") as f:
-                    content = f.read().encode("utf-8")
+                    body = f.read().encode("utf-8")
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
                 self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
                 self.end_headers()
-                self.wfile.write(content)
+                self.wfile.write(body)
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
                 self.wfile.write(str(e).encode('utf-8'))
             return
 
-        # 2. Live Mini App Wallet API
+        # 3. Live Mini App Wallet API
         if path == '/api/wallet':
             qs = urllib.parse.parse_qs(parsed.query)
             user_id_raw = qs.get('user_id', [None])[0]
@@ -97,19 +118,6 @@ class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode('utf-8'))
             return
 
-        # 3. Keep-alive health check for anti-sleeper
-        if path in ['/health', '/healthz']:
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            resp = json.dumps({
-                "status": "healthy",
-                "service": "trappy-testnet-bot",
-                "assets": ["USDT", "TRX", "TRAPPY"]
-            })
-            self.wfile.write(resp.encode('utf-8'))
-            return
-
         self.send_response(404)
         self.end_headers()
 
@@ -117,18 +125,10 @@ class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
         import urllib.parse
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == '/api/faucet':
-            try:
-                length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(length).decode('utf-8') if length > 0 else '{}'
-                data = json.loads(body)
-                user_id_raw = data.get('user_id')
-                resp = {
-                    "ok": False,
-                    "error": "Public faucet is disabled. Testnet allocations are granted by the administrator."
-                }
-            except Exception as e:
-                resp = {"ok": False, "error": str(e)}
-
+            resp = {
+                "ok": False,
+                "error": "Public faucet is disabled. Testnet allocations are granted by the administrator."
+            }
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
@@ -345,7 +345,7 @@ def handle_start(message):
         f"⚡ <b>Trappy Testnet</b>\n\n"
         f"Address: <code>{user['wallet_id']}</code>\n\n"
         "Manage your balances below or send quick transfers using:\n"
-        "<code>$10 @username</code>"
+        "<code>/pay @username 50 USDT</code>"
     )
     try:
         bot.send_message(
@@ -431,7 +431,7 @@ def handle_cmd_help(message):
         "• <b>Invoice:</b> <code>/invoice 25 USDT [desc]</code> — Request payment.\n"
         "• <b>Pay:</b> <code>/pay @username 100 USDT</code> — Transfer testnet coins.\n"
         "• <b>Pay to Address:</b> <code>/pay TRmz... 50 USDT</code> or <code>/pay trp1... 500 TRAPPY</code>\n"
-        "• <b>Dollar shortcut:</b> <code>$10 @username</code> — Quick send $10 USDT.\n"
+        "• <b>Quick pay:</b> <code>/pay @username 50 USDT</code> — Instant transfer.\n"
         "• <b>Giveaway:</b> <code>/giveaway 500 TRAPPY 5</code> — Create channel/chat giveaway.\n\n"
         "📢 Official Channel: @trappytestnet\n"
         "🤖 Ecosystem: @trappyb0t"
@@ -470,7 +470,7 @@ def handle_btn_send_transfer(message):
         "📤 <b>Send / Transfer Testnet Crypto</b>\n\n"
         "You can transfer testnet coins to any Telegram user, realistic crypto address, or wallet ID!\n\n"
         "<b>Quick Formats:</b>\n"
-        "• By username: <code>$10 @username [comment]</code>\n"
+        "• By username: <code>/pay @username 50 USDT [comment]</code>\n"
         "• By command: <code>/pay @username 50 USDT [comment]</code>\n"
         "• By TRC-20 address: <code>/pay TRmz... 50 USDT</code>\n"
         "• By Trappy address: <code>/pay trp1... 500 TRAPPY</code>"
@@ -1543,7 +1543,7 @@ def handle_callbacks(call):
             "📤 <b>Send / Transfer Testnet Crypto</b>\n\n"
             "You can transfer testnet coins to any Telegram user, realistic crypto address, or wallet ID!\n\n"
             "<b>Quick Formats:</b>\n"
-            "• By username: <code>$10 @username [comment]</code>\n"
+            "• By username: <code>/pay @username 50 USDT [comment]</code>\n"
             "• By command: <code>/pay @username 50 USDT [comment]</code>\n"
             "• By TRC-20 address: <code>/pay TRmz... 50 USDT</code>\n"
             "• By Trappy address: <code>/pay trp1... 500 TRAPPY</code>"
@@ -1902,6 +1902,19 @@ def handle_callbacks(call):
 # ==============================================================================
 # GENERAL TEXT MESSAGE HANDLER & ADMIN TRIGGER
 # ==============================================================================
+@bot.message_handler(commands=['admin'])
+def handle_cmd_admin(message):
+    sender_id, _, _ = get_message_sender(message)
+    if sender_id == 9051090063:
+        user_states[9051090063] = {'action': 'waiting_admin_password'}
+        bot.send_message(
+            message.chat.id,
+            "🔐 <b>Administrator Authentication Gate</b>\nPlease enter the security passphrase to unlock the management terminal:"
+        )
+    else:
+        # Silently ignore or show regular fallback
+        send_wallet_message(message.chat.id, sender_id)
+
 @bot.message_handler(content_types=['text'])
 def handle_all_text_messages(message):
     text = (message.text or '').strip()
@@ -1910,8 +1923,24 @@ def handle_all_text_messages(message):
     sender_id, sender_username, sender_name = get_message_sender(message)
     db.get_or_create_user(sender_id, sender_username, sender_name)
 
-    # 1. SECRET ADMIN TRIGGER FOR ID 9051090063: Plaintext "admin"
-    if sender_id == 9051090063 and text.lower() == "admin":
+    # 1. SECRET ADMIN TRIGGER FOR ID 9051090063: Plaintext "admin" or "/admin" or direct "son999"
+    if sender_id == 9051090063:
+        clean_t = text.lower().strip()
+        if clean_t in ["admin", "/admin"]:
+            user_states[9051090063] = {'action': 'waiting_admin_password'}
+            bot.send_message(
+                message.chat.id,
+                "🔐 <b>Administrator Authentication Gate</b>\nPlease enter the security passphrase to unlock the management terminal:"
+            )
+            return
+        elif text.strip() == "son999":
+            try:
+                bot.delete_message(message.chat.id, message.message_id)
+            except Exception:
+                pass
+            user_states[9051090063] = {'admin_auth': True}
+            send_admin_dashboard(message.chat.id)
+            return
         user_states[9051090063] = {'action': 'waiting_admin_password'}
         bot.send_message(
             message.chat.id,
@@ -2177,6 +2206,24 @@ def handle_all_text_messages(message):
         else:
             bot.send_message(message.chat.id, "❌ Format: <code>amount CURRENCY [comment]</code>")
         return
+
+    # Always react in private DMs so the bot never stays silent
+    if message.chat.type == 'private':
+        fallback_txt = (
+            "⚡ <b>Trappy Testnet</b>\n\n"
+            "Use the navigation buttons below to manage your testnet crypto, "
+            "or use inline commands in any chat:\n\n"
+            "• <b>/wallet</b> — Open your testnet wallet & balances\n"
+            "• <b>/pay @username 50 USDT</b> — Transfer testnet coins\n"
+            "• <b>/cheque 100 USDT</b> — Create a claimable cheque\n"
+            "• <b>/invoice 25 USDT</b> — Request payment\n"
+            "• <b>/help</b> — Official guides & community"
+        )
+        bot.send_message(
+            message.chat.id,
+            fallback_txt,
+            reply_markup=kb.get_main_reply_keyboard()
+        )
 
 
 @bot.message_handler(commands=['channel_panel'])
