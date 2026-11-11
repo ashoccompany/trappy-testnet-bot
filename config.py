@@ -53,5 +53,12 @@ FAUCET_COOLDOWN_SECONDS = 1800  # 30 minutes
 # Local Database Path
 DB_PATH = os.path.join(os.path.dirname(__file__), "trappy_testnet.db")
 
-# Mini App URL served directly from Render HTTP server
-MINI_APP_URL = "https://trappy-testnet-bot.onrender.com/wallet"
+# Mini App URL served directly from Render HTTP server (with cache-buster)
+MINI_APP_BASE = "https://trappy-testnet-bot.onrender.com/wallet"
+MINI_APP_VERSION = "2.2"
+MINI_APP_URL = f"{MINI_APP_BASE}?v={MINI_APP_VERSION}"
+
+def get_mini_app_url(user_id=None):
+    if user_id:
+        return f"{MINI_APP_BASE}?v={MINI_APP_VERSION}&user_id={user_id}"
+    return MINI_APP_URL

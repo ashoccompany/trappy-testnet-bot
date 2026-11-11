@@ -7,6 +7,7 @@ import re
 import time
 import logging
 import os
+import secrets
 import http.server
 import socketserver
 import threading
@@ -1106,8 +1107,80 @@ def handle_cmd_owner(message):
     bot.send_message(message.chat.id, txt, reply_markup=kb.get_hidden_owner_inline())
 
 # ==============================================================================
-# INLINE QUERY ENGINE (CHEVRON, CHEQUES, INVOICES & DIRECT TRANSFERS)
+# INLINE QUERY & MENTION DISPATCH ENGINE (UNIVERSAL TOKEN & INTENT PARSER)
 # ==============================================================================
+def parse_inline_query_intent(q):
+    q = q.strip()
+    if not q:
+        return {'type': 'empty'}
+        
+    low = q.lower()
+    
+    if low in ['wallet', 'bal', 'balance', 'address', 'addr', 'mywallet', 'portfolio']:
+        return {'type': 'wallet'}
+        
+    intent = None
+    if low.startswith('pay ') or low.startswith('send ') or low.startswith('transfer '):
+        intent = 'pay'
+        q = re.sub(r'^(pay|send|transfer)\s+', '', q, flags=re.IGNORECASE).strip()
+    elif low.startswith('cheque ') or low.startswith('check ') or low.startswith('drop '):
+        intent = 'cheque'
+        q = re.sub(r'^(cheque|check|drop)\s+', '', q, flags=re.IGNORECASE).strip()
+    elif low.startswith('invoice ') or low.startswith('request ') or low.startswith('bill '):
+        intent = 'invoice'
+        q = re.sub(r'^(invoice|request|bill)\s+', '', q, flags=re.IGNORECASE).strip()
+    elif low.startswith('giveaway ') or low.startswith('gw '):
+        intent = 'cheque'
+        q = re.sub(r'^(giveaway|gw)\s+', '', q, flags=re.IGNORECASE).strip()
+
+    tokens = q.split()
+    target_user = None
+    rem_tokens = []
+    for t in tokens:
+        if t.startswith('@') and len(t) > 1 and not target_user:
+            target_user = t.lstrip('@')
+        else:
+            rem_tokens.append(t)
+            
+    amount = None
+    currency = 'USDT'
+    winners = 1
+    note_words = []
+    
+    for t in rem_tokens:
+        clean_num = t.replace('$', '').replace('€', '').replace(',', '')
+        try:
+            val = float(clean_num)
+            if amount is None:
+                amount = val
+                continue
+            elif winners == 1 and val.is_integer() and int(val) > 0 and intent == 'cheque':
+                winners = int(val)
+                continue
+        except ValueError:
+            pass
+            
+        upper_t = t.upper()
+        if upper_t in config.SUPPORTED_CRYPTOS:
+            currency = upper_t
+            continue
+            
+        note_words.append(t)
+        
+    if amount is None:
+        amount = 10.0
+        
+    note = " ".join(note_words).strip()
+    
+    return {
+        'type': intent or ('pay' if target_user else 'multi'),
+        'amount': amount,
+        'currency': currency,
+        'target': target_user,
+        'winners': winners,
+        'note': note
+    }
+
 @bot.inline_handler(func=lambda query: True)
 def handle_inline_queries(query):
     user_id = query.from_user.id
@@ -1115,20 +1188,39 @@ def handle_inline_queries(query):
     q = query.query.strip()
     sender_tag = f"@{query.from_user.username or query.from_user.first_name}"
     
+    bal_usdt = db.get_balance(user_id, 'USDT')
+    bal_trx = db.get_balance(user_id, 'TRX')
+    bal_trappy = db.get_balance(user_id, 'TRAPPY')
+    tot_usd = bal_usdt * 1.0 + bal_trx * 0.16 + bal_trappy * 0.25
+    
+    parsed = parse_inline_query_intent(q)
     results = []
     
-    # 1. When query is empty: Real interactive quick actions for DMs & chats
-    if not q:
+    # 1. When empty: Show live wallet balance, quick cheque, invoice, addresses
+    if parsed['type'] == 'empty':
         results.append(
             InlineQueryResultArticle(
-                id="inline_cheque_usdt_10",
+                id=f"iw_{user_id}",
+                title="👛 My Testnet Wallet & Balances",
+                description=f"USDT: {bal_usdt:,.2f} | TRX: {bal_trx:,.2f} | TRAPPY: {bal_trappy:,.2f} (${tot_usd:,.2f})",
+                reply_markup=kb.get_wallet_inline_keyboard(webapp_url=config.get_mini_app_url(user_id)),
+                input_message_content=InputTextMessageContent(
+                    message_text=render_wallet_text(user_id),
+                    parse_mode="HTML"
+                )
+            )
+        )
+        ch10_id = f"c_{secrets.token_hex(4)}"
+        results.append(
+            InlineQueryResultArticle(
+                id=f"ich_10.0_USDT_1_{ch10_id}",
                 title="✉️ Send 10 USDT Cheque",
                 description="Drop a claimable 10 USDT cheque into this chat or DM",
-                reply_markup=kb.get_cheque_claim_inline("c_quick_10_usdt"),
+                reply_markup=kb.get_cheque_claim_inline(ch10_id),
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         f"✉️ <b>TRAPPY TESTNET CHEQUE</b>\n\n"
-                        f"💰 <b>Amount:</b> <b>10 USDT</b>\n"
+                        f"💰 <b>Amount:</b> <b>10.00 USDT</b>\n"
                         f"👤 <b>Creator:</b> {sender_tag}\n\n"
                         "Tap the button below to claim this cheque into your wallet!"
                     ),
@@ -1136,16 +1228,17 @@ def handle_inline_queries(query):
                 )
             )
         )
+        chtr_id = f"c_{secrets.token_hex(4)}"
         results.append(
             InlineQueryResultArticle(
-                id="inline_cheque_trappy_1000",
+                id=f"ich_1000.0_TRAPPY_1_{chtr_id}",
                 title="⚡ Send 1,000 TRAPPY Cheque",
                 description="Drop a claimable 1,000 TRAPPY cheque into this chat or DM",
-                reply_markup=kb.get_cheque_claim_inline("c_quick_1000_trappy"),
+                reply_markup=kb.get_cheque_claim_inline(chtr_id),
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         f"✉️ <b>TRAPPY TESTNET CHEQUE</b>\n\n"
-                        f"💰 <b>Amount:</b> <b>1,000 TRAPPY</b>\n"
+                        f"💰 <b>Amount:</b> <b>1,000.00 TRAPPY</b>\n"
                         f"👤 <b>Creator:</b> {sender_tag}\n\n"
                         "Tap the button below to claim this cheque into your wallet!"
                     ),
@@ -1153,16 +1246,17 @@ def handle_inline_queries(query):
                 )
             )
         )
+        iv25_id = f"iv_{secrets.token_hex(4)}"
         results.append(
             InlineQueryResultArticle(
-                id="inline_invoice_prompt",
+                id=f"iiv_25.0_USDT_{iv25_id}",
                 title="💳 Request 25 USDT (Invoice)",
-                description="Request testnet payment from the user in this chat or DM",
-                reply_markup=kb.get_invoice_pay_inline("iv_quick_25_usdt", "25", "USDT"),
+                description="Request 25 USDT payment from the user in this chat or DM",
+                reply_markup=kb.get_invoice_pay_inline(iv25_id, "25.00", "USDT"),
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         f"💳 <b>PAYMENT INVOICE</b>\n\n"
-                        f"💰 <b>Amount:</b> <b>25 USDT</b>\n"
+                        f"💰 <b>Amount:</b> <b>25.00 USDT</b>\n"
                         f"👤 <b>Pay to:</b> {sender_tag}\n\n"
                         "Tap the button below to pay this invoice."
                     ),
@@ -1172,8 +1266,8 @@ def handle_inline_queries(query):
         )
         results.append(
             InlineQueryResultArticle(
-                id="inline_wallet_share",
-                title="👛 Share My Testnet Addresses",
+                id=f"iaddr_{user_id}",
+                title="🔗 Share My Testnet Addresses",
                 description=f"TRC-20: {user.get('tron_address', '')[:14]}... | Trappy: {user.get('trappy_address', '')[:14]}...",
                 input_message_content=InputTextMessageContent(
                     message_text=render_wallet_text(user_id),
@@ -1184,85 +1278,106 @@ def handle_inline_queries(query):
         bot.answer_inline_query(query.id, results, cache_time=1)
         return
 
-    # 2. When query contains text: e.g. 50 USDT, $25, 1000 TRAPPY for dinner, 20 USDT @alex
-    m_parse = re.match(r'^\$?([\d.]+)(?:\s+([a-zA-Z]+))?(?:\s+@?([a-zA-Z0-9_]{3,42}))?(?:\s+(.*))?', q)
-    if m_parse:
-        amt_str, curr_raw, target_raw, note_raw = m_parse.groups()
-        try:
-            amt = float(amt_str)
-        except ValueError:
-            amt = 10.0
-            
-        curr = (curr_raw or 'USDT').upper()
-        if curr not in config.SUPPORTED_CRYPTOS:
-            curr = 'USDT'
-            
-        note = note_raw or ""
-        note_str = f"\n💬 <i>Note: {note}</i>" if note else ""
-        f_amt = format_crypto_amount(amt, curr)
-
-        # Cheque Option
+    # 2. Wallet query
+    if parsed['type'] == 'wallet':
         results.append(
             InlineQueryResultArticle(
-                id=f"inline_ch_{amt}_{curr}",
-                title=f"✉️ Send Cheque: {f_amt} {curr}",
-                description=f"Claimable by recipient in this DM or chat" + (f" ({note})" if note else ""),
-                reply_markup=kb.get_cheque_claim_inline(f"ch_{amt}_{curr}"),
+                id=f"iw_{user_id}",
+                title="👛 My Testnet Wallet & Balances",
+                description=f"USDT: {bal_usdt:,.2f} | TRX: {bal_trx:,.2f} | TRAPPY: {bal_trappy:,.2f} (${tot_usd:,.2f})",
+                reply_markup=kb.get_wallet_inline_keyboard(webapp_url=config.get_mini_app_url(user_id)),
+                input_message_content=InputTextMessageContent(
+                    message_text=render_wallet_text(user_id),
+                    parse_mode="HTML"
+                )
+            )
+        )
+        results.append(
+            InlineQueryResultArticle(
+                id=f"iaddr_{user_id}",
+                title="🔗 Share My Testnet Addresses",
+                description=f"TRC-20: {user.get('tron_address', '')[:14]}... | Trappy: {user.get('trappy_address', '')[:14]}...",
+                input_message_content=InputTextMessageContent(
+                    message_text=render_wallet_text(user_id),
+                    parse_mode="HTML"
+                )
+            )
+        )
+        bot.answer_inline_query(query.id, results, cache_time=1)
+        return
+
+    # 3. Dynamic queries: amount, currency, target, note, winners
+    amt = parsed['amount']
+    curr = parsed['currency']
+    target = parsed['target']
+    winners = parsed['winners']
+    note = parsed['note']
+    f_amt = format_crypto_amount(amt, curr)
+    note_str = f"\n💬 <i>Note: {note}</i>" if note else ""
+
+    if target:
+        results.append(
+            InlineQueryResultArticle(
+                id=f"ipay_{amt}_{curr}_{target}_{secrets.token_hex(4)}",
+                title=f"💸 Direct Pay: {f_amt} {curr} to @{target}",
+                description=f"Transfer {f_amt} {curr} directly to @{target}" + (f" ({note})" if note else ""),
+                reply_markup=InlineKeyboardMarkup().add(
+                    InlineKeyboardButton("👛 Open Wallet", web_app=types.WebAppInfo(url=config.get_mini_app_url(user_id)))
+                ),
                 input_message_content=InputTextMessageContent(
                     message_text=(
-                        f"✉️ <b>TRAPPY TESTNET CHEQUE</b>\n\n"
-                        f"💰 <b>Amount:</b> <b>{f_amt} {curr}</b>\n"
-                        f"👤 <b>Creator:</b> {sender_tag}{note_str}\n\n"
-                        "Tap the button below to claim this cheque into your wallet!"
+                        f"💸 <b>Trappy Testnet Transfer</b>\n\n"
+                        f"From: {sender_tag}\n"
+                        f"To: @{target}\n"
+                        f"Amount: <b>{f_amt} {curr}</b>{note_str}\n"
+                        f"Status: ✅ Instant Settlement"
                     ),
                     parse_mode="HTML"
                 )
             )
         )
 
-        # Invoice Option
-        results.append(
-            InlineQueryResultArticle(
-                id=f"inline_iv_{amt}_{curr}",
-                title=f"💳 Payment Request: {f_amt} {curr}",
-                description=f"Request {f_amt} {curr} from the user in this DM" + (f" ({note})" if note else ""),
-                reply_markup=kb.get_invoice_pay_inline(f"iv_{amt}_{curr}", f_amt, curr),
-                input_message_content=InputTextMessageContent(
-                    message_text=(
-                        f"💳 <b>PAYMENT INVOICE</b>\n\n"
-                        f"💰 <b>Amount:</b> <b>{f_amt} {curr}</b>\n"
-                        f"👤 <b>Pay to:</b> {sender_tag}{note_str}\n\n"
-                        "Tap the button below to pay this invoice."
-                    ),
-                    parse_mode="HTML"
-                )
+    ch_id = f"c_{secrets.token_hex(4)}"
+    ch_title = f"✉️ Send Cheque: {f_amt} {curr}" + (f" ({winners} claims)" if winners > 1 else "")
+    ch_desc = f"Claimable by recipient in this DM or chat" + (f" ({note})" if note else "")
+    results.append(
+        InlineQueryResultArticle(
+            id=f"ich_{amt}_{curr}_{winners}_{ch_id}",
+            title=ch_title,
+            description=ch_desc,
+            reply_markup=kb.get_cheque_claim_inline(ch_id, winners=winners),
+            input_message_content=InputTextMessageContent(
+                message_text=(
+                    f"✉️ <b>TRAPPY TESTNET CHEQUE</b>\n\n"
+                    f"💰 <b>Amount:</b> <b>{f_amt} {curr}</b>" + (f" (split between {winners} users)" if winners > 1 else "") + f"\n"
+                    f"👤 <b>Creator:</b> {sender_tag}{note_str}\n\n"
+                    "Tap the button below to claim this cheque into your wallet!"
+                ),
+                parse_mode="HTML"
             )
         )
+    )
 
-        # Direct Transfer Option (if target username specified)
-        if target_raw:
-            clean_target = target_raw.lstrip('@')
-            results.append(
-                InlineQueryResultArticle(
-                    id=f"inline_pay_{amt}_{curr}_{clean_target}",
-                    title=f"💸 Direct Pay: {f_amt} {curr} to @{clean_target}",
-                    description=f"Transfer testnet {curr} directly to @{clean_target}",
-                    reply_markup=InlineKeyboardMarkup().add(
-                        InlineKeyboardButton("👛 Open Wallet", web_app=types.WebAppInfo(url=config.MINI_APP_URL))
-                    ),
-                    input_message_content=InputTextMessageContent(
-                        message_text=(
-                            f"💸 <b>Trappy Testnet Transfer</b>\n\n"
-                            f"From: {sender_tag}\n"
-                            f"To: @{clean_target}\n"
-                            f"Amount: <b>{f_amt} {curr}</b>{note_str}\n"
-                            f"Status: ✅ Instant Settlement"
-                        ),
-                        parse_mode="HTML"
-                    )
-                )
+    iv_id = f"iv_{secrets.token_hex(4)}"
+    iv_target_str = f" from @{target}" if target else ""
+    results.append(
+        InlineQueryResultArticle(
+            id=f"iiv_{amt}_{curr}_{iv_id}",
+            title=f"💳 Payment Request: {f_amt} {curr}{iv_target_str}",
+            description=f"Request {f_amt} {curr} payment" + (f" ({note})" if note else ""),
+            reply_markup=kb.get_invoice_pay_inline(iv_id, f_amt, curr),
+            input_message_content=InputTextMessageContent(
+                message_text=(
+                    f"💳 <b>PAYMENT INVOICE</b>\n\n"
+                    f"💰 <b>Amount:</b> <b>{f_amt} {curr}</b>\n"
+                    f"👤 <b>Pay to:</b> {sender_tag}{note_str}\n\n"
+                    "Tap the button below to pay this invoice."
+                ),
+                parse_mode="HTML"
             )
-            
+        )
+    )
+
     bot.answer_inline_query(query.id, results, cache_time=1)
 
 @bot.chosen_inline_handler(func=lambda result: True)
@@ -1273,21 +1388,24 @@ def handle_chosen_inline(chosen):
         db.get_or_create_user(sender_id, chosen.from_user.username, chosen.from_user.first_name)
         rid = chosen.result_id
         
-        if rid.startswith("inline_ch_"):
+        if rid.startswith("ich_"):
             parts = rid.split("_")
-            amt = float(parts[2])
-            curr = parts[3]
-            db.create_cheque(sender_id, curr, amt, 1)
-        elif rid.startswith("inline_iv_"):
+            amt = float(parts[1])
+            curr = parts[2]
+            winners = int(parts[3])
+            ch_id = f"c_{parts[5]}" if len(parts) > 5 else parts[4]
+            db.create_cheque(sender_id, curr, amt, winners_count=winners, custom_id=ch_id)
+        elif rid.startswith("iiv_"):
             parts = rid.split("_")
-            amt = float(parts[2])
-            curr = parts[3]
-            db.create_invoice(sender_id, curr, amt)
-        elif rid.startswith("inline_pay_"):
+            amt = float(parts[1])
+            curr = parts[2]
+            iv_id = f"iv_{parts[4]}" if len(parts) > 4 else parts[3]
+            db.create_invoice(sender_id, curr, amt, custom_id=iv_id)
+        elif rid.startswith("ipay_"):
             parts = rid.split("_")
-            amt = float(parts[2])
-            curr = parts[3]
-            target_str = parts[4]
+            amt = float(parts[1])
+            curr = parts[2]
+            target_str = parts[3]
             target_user = db.find_user(target_str)
             if target_user:
                 db.transfer_crypto(sender_id, target_user['user_id'], curr, amt)

@@ -586,7 +586,7 @@ def get_active_channels():
 # ==============================================================================
 # CHEQUES ENGINE (SINGLE-USER & MULTI-USER CLAIMABLE CHEQUES)
 # ==============================================================================
-def create_cheque(creator_id, currency, total_amount, winners_count=1, note=''):
+def create_cheque(creator_id, currency, total_amount, winners_count=1, note='', custom_id=None):
     currency = currency.upper()
     if currency not in SUPPORTED_CRYPTOS:
         return False, "unsupported_currency", None
@@ -609,7 +609,7 @@ def create_cheque(creator_id, currency, total_amount, winners_count=1, note=''):
                            (total_amount, creator_id, currency))
                            
         amt_per_user = total_amount / float(winners_count)
-        cheque_id = f"c_{secrets.token_hex(4)}"
+        cheque_id = custom_id if custom_id else f"c_{secrets.token_hex(4)}"
         now = time.time()
         
         cursor.execute('''
@@ -685,7 +685,7 @@ def claim_cheque(cheque_id, user_id):
 # ==============================================================================
 # INVOICES / PAYMENT REQUESTS ENGINE
 # ==============================================================================
-def create_invoice(creator_id, currency, amount, note=''):
+def create_invoice(creator_id, currency, amount, note='', custom_id=None):
     currency = currency.upper()
     if currency not in SUPPORTED_CRYPTOS:
         return False, "unsupported_currency", None
@@ -695,7 +695,7 @@ def create_invoice(creator_id, currency, amount, note=''):
     with db_lock:
         conn = get_connection()
         cursor = conn.cursor()
-        invoice_id = f"iv_{secrets.token_hex(4)}"
+        invoice_id = custom_id if custom_id else f"iv_{secrets.token_hex(4)}"
         now = time.time()
         
         cursor.execute('''
