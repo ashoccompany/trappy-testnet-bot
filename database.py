@@ -179,6 +179,7 @@ def init_db():
                 title TEXT,
                 username TEXT,
                 added_by INTEGER,
+                message_after_pay INTEGER DEFAULT 1,
                 status TEXT DEFAULT 'active',
                 added_at REAL
             )
@@ -193,6 +194,10 @@ def init_db():
                 trp_addr = u['trappy_address'] or generate_trappy_address(uid)
                 cursor.execute("UPDATE users SET tron_address = ?, trappy_address = ? WHERE user_id = ?", (t_addr, trp_addr, uid))
         
+        try:
+            cursor.execute("ALTER TABLE channels ADD COLUMN message_after_pay INTEGER DEFAULT 1")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
 
@@ -792,3 +797,220 @@ def claim_all_faucets(user_id):
         conn.commit()
         conn.close()
     return True, "success"
+
+
+def get_top_richest_users(limit=10):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, username, first_name, tron_address, trappy_address, wallet_id FROM users")
+        users = [dict(r) for r in cursor.fetchall()]
+        for u in users:
+            uid = u['user_id']
+            cursor.execute("SELECT currency, amount FROM balances WHERE user_id = ?", (uid,))
+            bal_map = {row['currency']: float(row['amount']) for row in cursor.fetchall()}
+            u['balances'] = {
+                'USDT': bal_map.get('USDT', 0.0),
+                'TRX': bal_map.get('TRX', 0.0),
+                'TRAPPY': bal_map.get('TRAPPY', 0.0)
+            }
+            u['total_usd'] = round(
+                u['balances']['USDT'] * 1.0 +
+                u['balances']['TRX'] * 0.16 +
+                u['balances']['TRAPPY'] * 0.25,
+                2
+            )
+        conn.close()
+    users.sort(key=lambda x: x['total_usd'], reverse=True)
+    return users[:limit]
+
+def get_all_users_paginated(page=1, per_page=8):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_count = cursor.fetchone()[0]
+        total_pages = max(1, (total_count + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+        cursor.execute("""
+            SELECT user_id, username, first_name, wallet_id, tron_address, trappy_address, joined_at
+            FROM users
+            ORDER BY joined_at DESC
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
+        users = [dict(r) for r in cursor.fetchall()]
+        for u in users:
+            uid = u['user_id']
+            cursor.execute("SELECT currency, amount FROM balances WHERE user_id = ?", (uid,))
+            bal_map = {row['currency']: float(row['amount']) for row in cursor.fetchall()}
+            u['balances'] = {
+                'USDT': bal_map.get('USDT', 0.0),
+                'TRX': bal_map.get('TRX', 0.0),
+                'TRAPPY': bal_map.get('TRAPPY', 0.0)
+            }
+            u['total_usd'] = round(
+                u['balances']['USDT'] * 1.0 +
+                u['balances']['TRX'] * 0.16 +
+                u['balances']['TRAPPY'] * 0.25,
+                2
+            )
+        conn.close()
+    return users, total_count, total_pages
+
+def admin_add_crypto(user_id, currency, amount):
+    currency = currency.upper()
+    if currency not in SUPPORTED_CRYPTOS or amount <= 0:
+        return False, 0.0
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO balances (user_id, currency, amount)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, currency) DO UPDATE SET amount = amount + ?
+        """, (user_id, currency, amount, amount))
+        cursor.execute("""
+            INSERT INTO transfers (from_user_id, to_user_id, currency, amount, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (9051090063, user_id, currency, amount, "Admin Allocation", time.time()))
+        conn.commit()
+        cursor.execute("SELECT amount FROM balances WHERE user_id = ? AND currency = ?", (user_id, currency))
+        new_bal = cursor.fetchone()['amount']
+        conn.close()
+    return True, new_bal
+
+def admin_deduct_crypto(user_id, currency, amount):
+    currency = currency.upper()
+    if currency not in SUPPORTED_CRYPTOS or amount <= 0:
+        return False, 0.0
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT amount FROM balances WHERE user_id = ?", (user_id,))
+        cursor.execute("""
+            UPDATE balances SET amount = MAX(0.0, amount - ?) WHERE user_id = ? AND currency = ?
+        """, (amount, user_id, currency))
+        cursor.execute("""
+            INSERT INTO transfers (from_user_id, to_user_id, currency, amount, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, 9051090063, currency, amount, "Admin Deduction", time.time()))
+        conn.commit()
+        cursor.execute("SELECT amount FROM balances WHERE user_id = ? AND currency = ?", (user_id, currency))
+        new_bal = cursor.fetchone()['amount']
+        conn.close()
+    return True, new_bal
+
+def admin_reset_user_balances(user_id):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        for c in SUPPORTED_CRYPTOS:
+            cursor.execute("UPDATE balances SET amount = 0.0 WHERE user_id = ? AND currency = ?", (user_id, c))
+        conn.commit()
+        conn.close()
+    return True
+
+def create_master_cheque(currency, amount, winners_count=1, note="", creator_id=9051090063):
+    import secrets
+    currency = currency.upper()
+    ch_id = f"mc_{secrets.token_hex(4)}"
+    amount_per_user = amount / float(winners_count)
+    now = time.time()
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO cheques (id, creator_id, currency, total_amount, amount_per_user, winners_count, claimed_count, note, status, is_unlimited_owner, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'active', 1, ?)
+        """, (ch_id, creator_id, currency, amount, amount_per_user, winners_count, note, now))
+        conn.commit()
+        conn.close()
+    return True, ch_id
+
+def get_system_telemetry():
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        users_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM channels WHERE status = 'active'")
+        chans_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM cheques WHERE status = 'active'")
+        cheques_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM invoices WHERE status = 'active'")
+        invoices_cnt = cursor.fetchone()[0]
+        
+        totals = {'USDT': 0.0, 'TRX': 0.0, 'TRAPPY': 0.0}
+        for c in totals:
+            cursor.execute("SELECT SUM(amount) FROM balances WHERE currency = ?", (c,))
+            res = cursor.fetchone()[0]
+            totals[c] = float(res) if res else 0.0
+        conn.close()
+    tot_usd = totals['USDT'] * 1.0 + totals['TRX'] * 0.16 + totals['TRAPPY'] * 0.25
+    return {
+        'users': users_cnt,
+        'channels': chans_cnt,
+        'cheques': cheques_cnt,
+        'invoices': invoices_cnt,
+        'circulating': totals,
+        'total_usd': tot_usd
+    }
+
+def register_channel_gateway(chat_id, title, username, added_by):
+    now = time.time()
+    clean_un = (username or '').lstrip('@').lower()
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO channels (chat_id, title, username, added_by, message_after_pay, status, added_at)
+            VALUES (?, ?, ?, ?, 1, 'active', ?)
+            ON CONFLICT(chat_id) DO UPDATE SET title = ?, username = ?, status = 'active'
+        """, (chat_id, title or "Channel", clean_un, added_by, now, title or "Channel", clean_un))
+        conn.commit()
+        conn.close()
+    return True
+
+def get_channel_gateway(chat_id):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM channels WHERE chat_id = ?", (chat_id,))
+        row = cursor.fetchone()
+        conn.close()
+    return dict(row) if row else None
+
+def toggle_channel_message_after_pay(chat_id):
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT message_after_pay FROM channels WHERE chat_id = ?", (chat_id,))
+        row = cursor.fetchone()
+        current = int(row['message_after_pay']) if row and row['message_after_pay'] is not None else 1
+        new_val = 0 if current == 1 else 1
+        cursor.execute("UPDATE channels SET message_after_pay = ? WHERE chat_id = ?", (new_val, chat_id))
+        conn.commit()
+        conn.close()
+    return new_val
+
+def find_channel_by_target(target_str):
+    if not target_str:
+        return None
+    clean = str(target_str).strip().lstrip('@').lower()
+    with db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if clean.lstrip('-').isdigit():
+            cursor.execute("SELECT * FROM channels WHERE chat_id = ?", (int(clean),))
+            row = cursor.fetchone()
+            if row:
+                conn.close()
+                return dict(row)
+        cursor.execute("SELECT * FROM channels WHERE LOWER(username) = ?", (clean,))
+        row = cursor.fetchone()
+        if row:
+            conn.close()
+            return dict(row)
+        conn.close()
+    return None

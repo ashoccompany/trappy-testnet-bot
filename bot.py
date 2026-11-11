@@ -121,18 +121,10 @@ class RenderHealthHandler(http.server.BaseHTTPRequestHandler):
                 body = self.rfile.read(length).decode('utf-8') if length > 0 else '{}'
                 data = json.loads(body)
                 user_id_raw = data.get('user_id')
-                if user_id_raw and str(user_id_raw).isdigit():
-                    uid = int(user_id_raw)
-                    db.get_or_create_user(uid)
-                    db.claim_all_faucets(uid)
-                    balances = db.get_all_balances(uid)
-                    resp = {
-                        "ok": True,
-                        "message": "Testnet faucet credited successfully!",
-                        "balances": balances
-                    }
-                else:
-                    resp = {"ok": False, "error": "Invalid user_id"}
+                resp = {
+                    "ok": False,
+                    "error": "Public faucet is disabled. Testnet allocations are granted by the administrator."
+                }
             except Exception as e:
                 resp = {"ok": False, "error": str(e)}
 
@@ -317,13 +309,12 @@ def handle_start(message):
 
     # First-time onboarding experience
     if user.get('is_new', False):
-        db.claim_all_faucets(user_id)
         t_addr = user.get('tron_address') or db.generate_tron_address(user_id)
         trp_addr = user.get('trappy_address') or db.generate_trappy_address(user_id)
         welcome_text = (
             f"⚡ <b>Welcome to Trappy Testnet, {first_name}!</b>\n\n"
-            "Your professional multi-asset testnet crypto wallet is ready. Send, receive, and create "
-            "instant claimable cheques or payment requests in private chats, groups, and channels.\n\n"
+            "Your multi-currency testnet crypto wallet is ready. Send, receive, and create "
+            "instant claimable cheques and invoices in private chats, groups, and channels.\n\n"
             "💎 <b>Supported Testnet Assets:</b>\n"
             "• <b>USDT</b> — Tether (TRC-20, $1.00)\n"
             "• <b>TRX</b> — TRON Network ($0.16)\n"
@@ -331,7 +322,7 @@ def handle_start(message):
             "👛 <b>Your Testnet Deposit Addresses:</b>\n"
             f"• <b>TRC-20:</b> <code>{t_addr}</code>\n"
             f"• <b>Trappy:</b> <code>{trp_addr}</code>\n\n"
-            "🎁 <i>Your starter testnet balance has been credited so you can begin testing immediately!</i>"
+            "📥 <i>Share your testnet address to receive funds, or tap below to manage your wallet:</i>"
         )
         try:
             bot.send_message(
@@ -458,28 +449,33 @@ def handle_btn_wallet(message):
 def handle_btn_cheques(message):
     txt = (
         "✉️ <b>Trappy Testnet Cheques</b>\n\n"
-        "Create crypto cheques to send in DMs, group chats, or channels!\n\n"
-        "📌 <b>Create a Cheque:</b>\n"
-        "<code>/cheque &lt;amount&gt; &lt;currency&gt; [winners] [comment]</code>\n\n"
-        "<b>Examples:</b>\n"
-        "• Single cheque in DM: <code>/cheque 50 USDT For lunch</code>\n"
-        "• Multi-user cheque: <code>/cheque 1000 TRAPPY 5</code>\n\n"
-        "💡 <i>Tip: Type <code>@TrappyTestnetBot 50 USDT</code> in any DM to drop an instant cheque!</i>"
+        "Create claimable crypto cheques to send in DMs, groups, or channels!\n"
+        "Choose an instant preset below or enter a custom amount:"
     )
-    bot.send_message(message.chat.id, txt)
+    bot.send_message(message.chat.id, txt, reply_markup=kb.get_cheque_menu_inline())
 
 @bot.message_handler(func=lambda m: m.text == "💳 Invoices")
 def handle_btn_invoices(message):
     txt = (
         "💳 <b>Trappy Testnet Invoices</b>\n\n"
-        "Request testnet crypto from any Telegram user or in DMs.\n\n"
-        "📌 <b>Create an Invoice:</b>\n"
-        "<code>/invoice &lt;amount&gt; &lt;currency&gt; [description]</code>\n\n"
-        "<b>Example:</b>\n"
-        "<code>/invoice 25 USDT For coffee</code>\n\n"
-        "💡 <i>Tip: Use inline mode in any DM to request a payment!</i>"
+        "Request testnet crypto from any Telegram user or in DMs.\n"
+        "Choose an instant preset below or create a custom invoice:"
     )
-    bot.send_message(message.chat.id, txt)
+    bot.send_message(message.chat.id, txt, reply_markup=kb.get_invoice_menu_inline())
+@bot.message_handler(func=lambda m: m.text in ["📤 Send / Transfer", "📤 Send"])
+def handle_btn_send_transfer(message):
+    sender_id, _, _ = get_message_sender(message)
+    txt = (
+        "📤 <b>Send / Transfer Testnet Crypto</b>\n\n"
+        "You can transfer testnet coins to any Telegram user, realistic crypto address, or wallet ID!\n\n"
+        "<b>Quick Formats:</b>\n"
+        "• By username: <code>$10 @username [comment]</code>\n"
+        "• By command: <code>/pay @username 50 USDT [comment]</code>\n"
+        "• By TRC-20 address: <code>/pay TRmz... 50 USDT</code>\n"
+        "• By Trappy address: <code>/pay trp1... 500 TRAPPY</code>"
+    )
+    bot.send_message(message.chat.id, txt, reply_markup=kb.get_withdraw_inline_keyboard())
+
 
 @bot.message_handler(func=lambda m: m.text in ["🎁 Giveaways", "🎁 Cheques / Giveaways"])
 def handle_btn_giveaways(message):
@@ -705,11 +701,18 @@ def execute_payment(message, sender_id, target_str, amount_str, currency_raw, no
         return
         
     target_user = db.find_user(target_str)
+    target_chan = None
     if not target_user:
-        safe_reply(message, f"❌ Target user <code>@{target_str.lstrip('@')}</code> not found in Trappy Testnet. Ask them to start the bot first!")
-        return
-        
-    to_user_id = target_user['user_id']
+        target_chan = db.find_channel_by_target(target_str)
+        if target_chan:
+            to_user_id = target_chan.get('added_by') or config.OWNER_IDS[0]
+            target_user = {'user_id': to_user_id, 'username': target_chan.get('username', ''), 'first_name': target_chan.get('title', 'Channel')}
+        else:
+            safe_reply(message, f"❌ Target user or channel <code>@{target_str.lstrip('@')}</code> not found.")
+            return
+    else:
+        to_user_id = target_user['user_id']
+        target_chan = db.find_channel_by_target(target_str)
     success, reason = db.transfer_crypto(sender_id, to_user_id, currency, amount, note=note)
     
     if success:
@@ -729,6 +732,10 @@ def execute_payment(message, sender_id, target_str, amount_str, currency_raw, no
         )
         safe_reply(message, reply_txt)
         
+        # Broadcast live to channel if Message-after-Pay is enabled
+        if target_chan:
+            broadcast_channel_payment(target_chan['chat_id'], sender_name, formatted_amt, currency, note)
+
         try:
             bot.send_message(
                 to_user_id,
@@ -1290,12 +1297,96 @@ def handle_chosen_inline(chosen):
 # ==============================================================================
 # CALLBACK QUERY DISPATCHER
 # ==============================================================================
+def send_admin_dashboard(chat_id, message_id=None):
+    stats = db.get_system_telemetry()
+    circ = stats['circulating']
+    txt = (
+        "⚡ <b>MASTER ADMINISTRATION TERMINAL</b>\n"
+        "<i>Authorized Operator: 9051090063</i>\n\n"
+        "📊 <b>System Telemetry:</b>\n"
+        f"• Registered Users: <b>{stats['users']}</b>\n"
+        f"• Connected Channels: <b>{stats['channels']}</b>\n"
+        f"• Active Cheques: <b>{stats['cheques']}</b> | Invoices: <b>{stats['invoices']}</b>\n\n"
+        "💰 <b>Circulating Testnet Supply:</b>\n"
+        f"• <b>USDT:</b> {circ['USDT']:,.2f} USDT\n"
+        f"• <b>TRX:</b> {circ['TRX']:,.2f} TRX\n"
+        f"• <b>TRAPPY:</b> {circ['TRAPPY']:,.2f} TRAPPY\n"
+        f"• <b>Total Valuation:</b> ${stats['total_usd']:,.2f}\n\n"
+        "Select an administrative module below to manage the ecosystem:"
+    )
+    if message_id:
+        try:
+            bot.edit_message_text(txt, chat_id=chat_id, message_id=message_id, reply_markup=kb.get_admin_main_inline())
+            return
+        except Exception:
+            pass
+    bot.send_message(chat_id, txt, reply_markup=kb.get_admin_main_inline())
+
+def send_channel_paying_panel(channel_chat_id, admin_chat_id=None):
+    chan = db.get_channel_gateway(channel_chat_id)
+    title = chan.get('title', 'Channel') if chan else 'Channel'
+    t_addr = db.generate_tron_address(abs(channel_chat_id) % 100000000)
+    trp_addr = db.generate_trappy_address(abs(channel_chat_id) % 100000000)
+    
+    txt = (
+        f"🎰 <b>{title.upper()} — PAYMENT & BETTING PANEL</b>\n"
+        "<i>Automated Testnet Crypto Gateway</i>\n\n"
+        "To participate, deposit, or place a bet:\n"
+        "1️⃣ Tap an instant payment button below, or transfer testnet crypto.\n"
+        "2️⃣ Include your bet / reference in the comment (e.g. <code>red 50</code>, <code>dice 100</code>).\n"
+        "3️⃣ Your payment is verified instantly and broadcast live to this channel!\n\n"
+        "💎 <b>Accepted Assets:</b> USDT (TRC-20), TRX, TRAPPY\n"
+        "🏷️ <b>Channel TRC-20 Address:</b>\n"
+        f"<code>{t_addr}</code>\n"
+        "🏷️ <b>Channel Trappy Address:</b>\n"
+        f"<code>{trp_addr}</code>"
+    )
+    try:
+        sent = bot.send_message(
+            channel_chat_id,
+            txt,
+            reply_markup=kb.get_channel_paying_panel_inline(channel_chat_id)
+        )
+        if admin_chat_id:
+            bot.send_message(admin_chat_id, f"✅ Paying panel successfully deployed in <b>{title}</b>!")
+        return sent
+    except Exception as e:
+        if admin_chat_id:
+            bot.send_message(admin_chat_id, f"⚠️ Could not post to channel: {e}\nMake sure the bot has admin permission to post messages.")
+        return None
+
+def broadcast_channel_payment(channel_chat_id, sender_tag, amount_str, currency, comment):
+    chan = db.get_channel_gateway(channel_chat_id)
+    if chan and int(chan.get('message_after_pay', 1)) == 0:
+        return  # Message-after-pay is disabled for this channel
+        
+    time_str = time.strftime("%H:%M:%S UTC")
+    comm_str = f"<i>\"{comment}\"</i>" if comment and comment.lower() != 'skip' else "<i>None</i>"
+    receipt_txt = (
+        "🎰 <b>LIVE PAYMENT BROADCAST</b>\n\n"
+        f"👤 <b>From:</b> {sender_tag}\n"
+        f"💰 <b>Amount:</b> <b>{amount_str} {currency}</b>\n"
+        f"💬 <b>Comment:</b> {comm_str}\n"
+        f"⏰ <b>Time:</b> {time_str}\n"
+        "✅ <b>Status:</b> Confirmed Testnet Transaction"
+    )
+    try:
+        bot.send_message(channel_chat_id, receipt_txt)
+    except Exception as e:
+        logger.warning(f"Could not broadcast channel payment to {channel_chat_id}: {e}")
+
+# ==============================================================================
+# CALLBACK QUERY DISPATCHER
+# ==============================================================================
 @bot.callback_query_handler(func=lambda c: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
     data = call.data
     db.get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
-    
+
+    # --------------------------------------------------------------------------
+    # Basic Navigation
+    # --------------------------------------------------------------------------
     if data in ["action_wallet", "action_back_main"]:
         bot.answer_callback_query(call.id)
         text = render_wallet_text(user_id)
@@ -1316,10 +1407,10 @@ def handle_callbacks(call):
         trp_addr = user.get('trappy_address') or db.generate_trappy_address(user_id)
         txt = (
             "📥 <b>Deposit Testnet Crypto</b>\n\n"
-            "Share your receiving address to receive testnet coins, or tap a button below to claim from the faucet:\n\n"
+            "Share your receiving address with the sender or administrator to receive testnet funds:\n\n"
             f"• <b>TRC-20 Address (USDT / TRX):</b>\n<code>{t_addr}</code>\n\n"
             f"• <b>Trappy Native Address (TRAPPY):</b>\n<code>{trp_addr}</code>\n\n"
-            "Free Faucet Claims:"
+            "<i>Note: Public faucet claims are disabled. Allocations are granted directly by the administrator or via cheques and invoices.</i>"
         )
         bot.edit_message_text(
             text=txt,
@@ -1328,33 +1419,15 @@ def handle_callbacks(call):
             reply_markup=kb.get_deposit_inline_keyboard()
         )
 
-    elif data.startswith("faucet_"):
-        sym = data.replace("faucet_", "")
-        success, reason, amt, mins = db.claim_faucet(user_id, sym)
-        if success:
-            famt = format_crypto_amount(amt, sym)
-            bot.answer_callback_query(call.id, f"🎉 Received +{famt} {sym} testnet!", show_alert=True)
-            text = render_wallet_text(user_id)
-            try:
-                bot.edit_message_text(
-                    text=text,
-                    chat_id=call.message.chat.id,
-                    message_id=call.message.message_id,
-                    reply_markup=kb.get_wallet_inline_keyboard()
-                )
-            except Exception:
-                pass
-        else:
-            bot.answer_callback_query(call.id, f"⏳ Cooldown active. Try again in {mins}m.", show_alert=True)
-
     elif data == "action_withdraw":
         bot.answer_callback_query(call.id)
         txt = (
             "📤 <b>Send / Transfer Testnet Crypto</b>\n\n"
             "You can transfer testnet coins to any Telegram user, realistic crypto address, or wallet ID!\n\n"
             "<b>Quick Formats:</b>\n"
-            "• By username: <code>$10 @username</code>\n"
-            "• By TRC20 address: <code>/pay TRmz... 50 USDT</code>\n"
+            "• By username: <code>$10 @username [comment]</code>\n"
+            "• By command: <code>/pay @username 50 USDT [comment]</code>\n"
+            "• By TRC-20 address: <code>/pay TRmz... 50 USDT</code>\n"
             "• By Trappy address: <code>/pay trp1... 500 TRAPPY</code>"
         )
         bot.edit_message_text(
@@ -1369,7 +1442,7 @@ def handle_callbacks(call):
         user_states[user_id] = {'action': 'waiting_pay_prompt'}
         bot.send_message(
             call.message.chat.id,
-            "✍️ <b>Enter transfer details:</b>\nFormat: <code>@username amount CURRENCY</code>\nExample: <code>@friend 100 USDT</code>"
+            "✍️ <b>Enter transfer details:</b>\nFormat: <code>@username amount CURRENCY [comment]</code>\nExample: <code>@username 50 USDT For lunch</code>"
         )
 
     elif data == "send_by_address":
@@ -1377,7 +1450,7 @@ def handle_callbacks(call):
         user_states[user_id] = {'action': 'waiting_pay_prompt'}
         bot.send_message(
             call.message.chat.id,
-            "✍️ <b>Enter address transfer details:</b>\nFormat: <code>&lt;address&gt; &lt;amount&gt; &lt;CURRENCY&gt;</code>\nExample:\n<code>TRmzNV2HxSAdRDmQyahqvGrJS8vFPeHkUh 50 USDT</code>\nor:\n<code>trp12727tjqmvgx9zrtm6qqj040t6l6jdp6v3enx86 1000 TRAPPY</code>"
+            "✍️ <b>Enter address transfer details:</b>\nFormat: <code>&lt;address&gt; &lt;amount&gt; &lt;CURRENCY&gt; [comment]</code>\nExample: <code>TRmzNV2HxSAdRDmQyahqvGrJS8vFPeHkUh 50 USDT</code>"
         )
 
     elif data == "send_by_wallet_id":
@@ -1385,167 +1458,621 @@ def handle_callbacks(call):
         user_states[user_id] = {'action': 'waiting_pay_prompt'}
         bot.send_message(
             call.message.chat.id,
-            "✍️ <b>Enter transfer details:</b>\nFormat: <code>TRP-xxxx amount CURRENCY</code>\nExample: <code>TRP-9051-A1B2 500 TRAPPY</code>"
+            "✍️ <b>Enter transfer details:</b>\nFormat: <code>TRP-xxxx amount CURRENCY [comment]</code>\nExample: <code>TRP-9051-A1 50 USDT</code>"
+        )
+
+    # --------------------------------------------------------------------------
+    # Interactive Cheques & Invoices Menus
+    # --------------------------------------------------------------------------
+    elif data == "action_cheque_prompt":
+        bot.answer_callback_query(call.id)
+        txt = (
+            "✉️ <b>Create a Testnet Cheque</b>\n\n"
+            "Issue a claimable crypto cheque. Select an instant amount below or specify custom winners and comments:"
+        )
+        try:
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_cheque_menu_inline())
+        except Exception:
+            bot.send_message(call.message.chat.id, txt, reply_markup=kb.get_cheque_menu_inline())
+
+    elif data.startswith("ch_preset_"):
+        bot.answer_callback_query(call.id)
+        parts = data.replace("ch_preset_", "").split("_")
+        amt_str, curr = parts[0], parts[1]
+        execute_create_cheque(call.message, user_id, amt_str, curr, "1", "Instant Cheque")
+
+    elif data == "ch_custom_prompt":
+        bot.answer_callback_query(call.id)
+        user_states[user_id] = {'action': 'waiting_cheque_prompt'}
+        bot.send_message(
+            call.message.chat.id,
+            "✍️ <b>Enter Cheque Details:</b>\nFormat: <code>&lt;amount&gt; &lt;CURRENCY&gt; [winners] [comment]</code>\nExample: <code>50 USDT 1 For lunch</code>\nor: <code>1000 TRAPPY 5 Community Drop</code>"
+        )
+
+    elif data == "action_invoice_prompt":
+        bot.answer_callback_query(call.id)
+        txt = (
+            "💳 <b>Create a Payment Invoice</b>\n\n"
+            "Request testnet crypto from any user. Choose an instant amount below or enter custom details:"
+        )
+        try:
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_invoice_menu_inline())
+        except Exception:
+            bot.send_message(call.message.chat.id, txt, reply_markup=kb.get_invoice_menu_inline())
+
+    elif data.startswith("iv_preset_"):
+        bot.answer_callback_query(call.id)
+        parts = data.replace("iv_preset_", "").split("_")
+        amt_str, curr = parts[0], parts[1]
+        execute_create_invoice(call.message, user_id, amt_str, curr, "Payment Request")
+
+    elif data == "iv_custom_prompt":
+        bot.answer_callback_query(call.id)
+        user_states[user_id] = {'action': 'waiting_invoice_prompt'}
+        bot.send_message(
+            call.message.chat.id,
+            "✍️ <b>Enter Invoice Details:</b>\nFormat: <code>&lt;amount&gt; &lt;CURRENCY&gt; [description]</code>\nExample: <code>25 USDT For coffee</code>\nor: <code>500 TRAPPY Web service fee</code>"
         )
 
     elif data.startswith("claim_ch_"):
         ch_id = data.replace("claim_ch_", "")
-        execute_claim_cheque(user_id, ch_id, call.message.chat.id, call)
-
-    elif data.startswith("ch_done_"):
-        bot.answer_callback_query(call.id, "This cheque has already completed!", show_alert=True)
+        execute_claim_cheque(user_id, ch_id, call.message.chat.id, call=call)
 
     elif data.startswith("pay_iv_"):
         iv_id = data.replace("pay_iv_", "")
-        execute_pay_invoice(user_id, iv_id, call)
-
-    elif data.startswith("iv_done_"):
-        bot.answer_callback_query(call.id, "This invoice is already paid!", show_alert=True)
+        execute_pay_invoice(call.message, user_id, iv_id, call=call)
 
     elif data.startswith("claim_gw_"):
         gw_id = data.replace("claim_gw_", "")
-        execute_claim_giveaway(user_id, gw_id, call.message.chat.id, call)
+        execute_claim_giveaway(user_id, gw_id, call.message.chat.id, call=call)
 
-    elif data.startswith("gw_done_"):
-        bot.answer_callback_query(call.id, "This giveaway has already completed!", show_alert=True)
-
-    # Hidden Owner Shortcuts
-    elif data == "owner_quick_usdt" and user_id in config.OWNER_IDS:
-        db.add_crypto(user_id, 'USDT', 10000.0)
-        bot.answer_callback_query(call.id, "+10,000 USDT added!", show_alert=True)
-    elif data == "owner_quick_trx" and user_id in config.OWNER_IDS:
-        db.add_crypto(user_id, 'TRX', 50000.0)
-        bot.answer_callback_query(call.id, "+50,000 TRX added!", show_alert=True)
-    elif data == "owner_quick_trappy" and user_id in config.OWNER_IDS:
-        db.add_crypto(user_id, 'TRAPPY', 100000.0)
-        bot.answer_callback_query(call.id, "+100,000 TRAPPY added!", show_alert=True)
-    elif data == "owner_post_gw" and user_id in config.OWNER_IDS:
+    elif data == "action_close_card":
         bot.answer_callback_query(call.id)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+
+    # --------------------------------------------------------------------------
+    # Channel Gateway & Paying Panel
+    # --------------------------------------------------------------------------
+    elif data.startswith("chan_deploy_panel_"):
+        bot.answer_callback_query(call.id, "Deploying Paying Panel...", show_alert=False)
+        chan_id = int(data.replace("chan_deploy_panel_", ""))
+        send_channel_paying_panel(chan_id, admin_chat_id=call.message.chat.id)
+
+    elif data.startswith("chan_settings_"):
+        bot.answer_callback_query(call.id)
+        chan_id = int(data.replace("chan_settings_", ""))
+        chan = db.get_channel_gateway(chan_id)
+        map_val = chan.get('message_after_pay', 1) if chan else 1
+        txt = (
+            "⚙️ <b>Channel Gateway Settings</b>\n\n"
+            f"Channel: <b>{chan.get('title', 'Channel') if chan else chan_id}</b>\n"
+            "• <b>Message-after-Pay:</b> When enabled, any payment made with a comment is automatically broadcast live to this channel.\n\n"
+            "Toggle settings below:"
+        )
+        bot.send_message(call.message.chat.id, txt, reply_markup=kb.get_channel_gateway_settings_inline(chan_id, map_val))
+
+    elif data.startswith("chan_toggle_map_"):
+        chan_id = int(data.replace("chan_toggle_map_", ""))
+        new_val = db.toggle_channel_message_after_pay(chan_id)
+        status_txt = "ENABLED (ON ✅)" if new_val == 1 else "DISABLED (OFF ❌)"
+        bot.answer_callback_query(call.id, f"Message-after-Pay is now {status_txt}", show_alert=True)
+        try:
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=kb.get_channel_gateway_settings_inline(chan_id, new_val))
+        except Exception:
+            pass
+
+    elif data.startswith("cpay_custom_"):
+        chan_id = int(data.replace("cpay_custom_", ""))
+        bot.answer_callback_query(call.id)
+        user_states[user_id] = {'action': 'waiting_chan_custom_pay', 'channel_id': chan_id}
         bot.send_message(
             user_id,
-            "🚀 To post to @trappytestnet, send:\n<code>/channel_giveaway 10000 TRAPPY 20 @trappytestnet</code>"
+            "✍️ <b>Enter Payment Details for Channel Deposit:</b>\nFormat: <code>&lt;amount&gt; &lt;CURRENCY&gt; [comment / bet]</code>\nExample: <code>50 USDT red 50</code>"
         )
 
-def execute_claim_giveaway(user_id, gw_id, chat_id, call=None):
-    gw = db.get_giveaway(gw_id)
-    if not gw:
-        if call:
-            bot.answer_callback_query(call.id, "Giveaway not found.", show_alert=True)
-        return
+    elif data.startswith("cpay_"):
+        # Format: cpay_{channel_id}_{amt}_{curr}
+        parts = data.split("_")
+        chan_id = int(parts[1])
+        amt_str = parts[2]
+        curr = parts[3]
+        bot.answer_callback_query(call.id)
         
-    req_channel = gw.get('required_channel', 'trappytestnet')
-    try:
-        member = bot.get_chat_member(f"@{req_channel}", user_id)
-        if member.status in ['left', 'kicked']:
-            if call:
-                bot.answer_callback_query(call.id, f"❌ You must join @{req_channel} to claim!", show_alert=True)
-            else:
-                bot.send_message(chat_id, f"❌ Please subscribe to @{req_channel} to claim this giveaway!")
+        user_states[user_id] = {
+            'action': 'waiting_chan_pay_comment',
+            'channel_id': chan_id,
+            'amount': amt_str,
+            'currency': curr
+        }
+        chan = db.get_channel_gateway(chan_id)
+        chan_title = chan.get('title', 'Channel') if chan else 'the channel'
+        bot.send_message(
+            user_id,
+            f"🎰 <b>Payment of {amt_str} {curr} to {chan_title}</b>\n\n"
+            "✍️ <b>Enter your payment / bet comment:</b>\n"
+            "Example: <code>red 50</code>, <code>dice 100</code>, or type <code>skip</code> to send without comment."
+        )
+
+    # --------------------------------------------------------------------------
+    # Master Admin Terminal Callbacks (ID: 9051090063)
+    # --------------------------------------------------------------------------
+    elif data.startswith("adm_"):
+        if user_id != 9051090063:
+            bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
             return
-    except Exception:
-        pass
+
+        bot.answer_callback_query(call.id)
         
-    success, reason, amt, currency, remaining = db.claim_giveaway(gw_id, user_id)
-    if success:
-        famt = format_crypto_amount(amt, currency)
-        if call:
-            bot.answer_callback_query(call.id, f"🎉 Claimed +{famt} {currency}!", show_alert=True)
-            updated_gw = db.get_giveaway(gw_id)
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=call.message.chat.id,
-                    message_id=call.message.message_id,
-                    reply_markup=kb.get_giveaway_claim_inline(
-                        gw_id, updated_gw['claimed_count'], updated_gw['winners_count'],
-                        is_completed=(updated_gw['status'] == 'completed')
-                    )
+        if data == "adm_home":
+            send_admin_dashboard(call.message.chat.id, message_id=call.message.message_id)
+
+        elif data == "adm_leaderboard":
+            top = db.get_top_richest_users(10)
+            txt = "🏆 <b>RICHEST USERS LEADERBOARD</b>\n<i>Real-time USD Valuation</i>\n\n"
+            for i, u in enumerate(top):
+                uname = f"@{u['username']}" if u.get('username') else u.get('first_name', str(u['user_id']))
+                txt += (
+                    f"<b>#{i+1} {uname}</b> (<code>{u['user_id']}</code>)\n"
+                    f"• USDT: {u['balances']['USDT']:,.1f} | TRX: {u['balances']['TRX']:,.1f} | TRAPPY: {u['balances']['TRAPPY']:,.1f}\n"
+                    f"• Valuation: <b>${u['total_usd']:,.2f}</b>\n\n"
                 )
+            txt += "Tap any user below to inspect or grant/deduct funds:"
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_leaderboard_inline(top))
+
+        elif data.startswith("adm_users_"):
+            page = int(data.replace("adm_users_", ""))
+            users, total_cnt, total_pages = db.get_all_users_paginated(page, 8)
+            txt = f"👥 <b>USERS DIRECTORY</b> (Total: {total_cnt})\nPage {page} of {total_pages}\n\n"
+            for u in users:
+                uname = f"@{u['username']}" if u.get('username') else u.get('first_name', str(u['user_id']))
+                txt += f"• <b>{uname}</b> (<code>{u['user_id']}</code>) — <b>${u['total_usd']:,.2f}</b>\n"
+            txt += "\nSelect a user to inspect or adjust balances:"
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_users_list_inline(users, page, total_pages))
+
+        elif data.startswith("adm_inspect_"):
+            target_id = int(data.replace("adm_inspect_", ""))
+            target_user = db.get_user(target_id)
+            if not target_user:
+                bot.send_message(call.message.chat.id, "User not found.")
+                return
+            bals = db.get_all_balances(target_id)
+            tot_usd = bals.get('USDT', 0)*1.0 + bals.get('TRX', 0)*0.16 + bals.get('TRAPPY', 0)*0.25
+            uname = f"@{target_user['username']}" if target_user.get('username') else "None"
+            txt = (
+                f"👤 <b>USER DOSSIER: {target_user.get('first_name', 'User')}</b>\n\n"
+                f"• <b>Telegram ID:</b> <code>{target_id}</code>\n"
+                f"• <b>Username:</b> {uname}\n"
+                f"• <b>Wallet ID:</b> <code>{target_user.get('wallet_id', '')}</code>\n"
+                f"• <b>TRC-20 Address:</b>\n<code>{target_user.get('tron_address', '')}</code>\n"
+                f"• <b>Trappy Native Address:</b>\n<code>{target_user.get('trappy_address', '')}</code>\n\n"
+                f"💰 <b>Current Balances:</b>\n"
+                f"• USDT: <b>{format_crypto_amount(bals.get('USDT', 0), 'USDT')}</b>\n"
+                f"• TRX: <b>{format_crypto_amount(bals.get('TRX', 0), 'TRX')}</b>\n"
+                f"• TRAPPY: <b>{format_crypto_amount(bals.get('TRAPPY', 0), 'TRAPPY')}</b>\n"
+                f"• Total USD: <b>${tot_usd:,.2f}</b>\n\n"
+                "Select an administrative action:"
+            )
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_user_manage_inline(target_id))
+
+        elif data.startswith("adm_grant_"):
+            # Format: adm_grant_{user_id}_{curr}
+            parts = data.split("_")
+            t_id = int(parts[2])
+            curr = parts[3]
+            txt = f"➕ <b>Grant {curr} to User <code>{t_id}</code></b>\nChoose preset amount or tap Custom:"
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_grant_presets_inline(t_id, curr))
+
+        elif data.startswith("adm_exec_grant_"):
+            # Format: adm_exec_grant_{user_id}_{curr}_{amount}
+            parts = data.split("_")
+            t_id = int(parts[3])
+            curr = parts[4]
+            amt = float(parts[5])
+            ok, new_bal = db.admin_add_crypto(t_id, curr, amt)
+            famt = format_crypto_amount(amt, curr)
+            bot.answer_callback_query(call.id, f"Granted +{famt} {curr}!", show_alert=True)
+            # Notify target user
+            try:
+                bot.send_message(t_id, f"🎉 <b>Testnet Crypto Received!</b>\nYou received <b>+{famt} {curr}</b> from the Administrator!")
             except Exception:
                 pass
-        else:
-            bot.send_message(chat_id, f"🎉 <b>Giveaway Claimed!</b> +{famt} {currency} added to your wallet!")
-    else:
-        if reason == "already_claimed":
-            if call:
-                bot.answer_callback_query(call.id, "⚠️ You already claimed this giveaway!", show_alert=True)
-        elif reason == "completed":
-            if call:
-                bot.answer_callback_query(call.id, "❌ All rewards have already been claimed!", show_alert=True)
-        else:
-            if call:
-                bot.answer_callback_query(call.id, f"Error: {reason}", show_alert=True)
+            # Refresh inspection
+            bals = db.get_all_balances(t_id)
+            tot_usd = bals.get('USDT', 0)*1.0 + bals.get('TRX', 0)*0.16 + bals.get('TRAPPY', 0)*0.25
+            target_user = db.get_user(t_id)
+            txt = (
+                f"✅ <b>Successfully granted +{famt} {curr}!</b>\n\n"
+                f"👤 <b>User <code>{t_id}</code> Updated Balances:</b>\n"
+                f"• USDT: <b>{bals.get('USDT', 0):,.2f}</b>\n"
+                f"• TRX: <b>{bals.get('TRX', 0):,.2f}</b>\n"
+                f"• TRAPPY: <b>{bals.get('TRAPPY', 0):,.2f}</b>\n"
+                f"• Total USD: <b>${tot_usd:,.2f}</b>"
+            )
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_user_manage_inline(t_id))
+
+        elif data.startswith("adm_custom_grant_"):
+            parts = data.split("_")
+            t_id = int(parts[3])
+            curr = parts[4]
+            user_states[9051090063] = {'action': 'admin_custom_grant', 'target_id': t_id, 'currency': curr}
+            bot.send_message(call.message.chat.id, f"✍️ <b>Enter custom amount of {curr} to grant to User <code>{t_id}</code>:</b>")
+
+        elif data.startswith("adm_deduct_"):
+            t_id = int(data.replace("adm_deduct_", ""))
+            user_states[9051090063] = {'action': 'admin_custom_deduct', 'target_id': t_id}
+            bot.send_message(call.message.chat.id, f"✍️ <b>Enter amount and currency to deduct from User <code>{t_id}</code>:</b>\nExample: <code>100 USDT</code> or <code>5000 TRAPPY</code>")
+
+        elif data.startswith("adm_reset_"):
+            t_id = int(data.replace("adm_reset_", ""))
+            db.admin_reset_user_balances(t_id)
+            bot.answer_callback_query(call.id, f"Zeroed out balances for User {t_id}!", show_alert=True)
+            # Refresh inspection
+            target_user = db.get_user(t_id)
+            txt = f"🔄 <b>All balances zeroed out for User <code>{t_id}</code>.</b>"
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_user_manage_inline(t_id))
+
+        elif data.startswith("adm_user_cheque_"):
+            t_id = int(data.replace("adm_user_cheque_", ""))
+            user_states[9051090063] = {'action': 'admin_custom_master_cheque', 'note': f"Direct allocation for {t_id}"}
+            bot.send_message(call.message.chat.id, f"✍️ <b>Enter cheque amount and currency for User <code>{t_id}</code>:</b>\nExample: <code>500 USDT</code>")
+
+        elif data == "adm_master_cheque":
+            txt = (
+                "✉️ <b>ISSUE FORWARDABLE MASTER CHEQUE</b>\n\n"
+                "As administrator, you can issue cheques of ANY amount without deduction.\n"
+                "Select a preset amount below or create a custom multi-claim cheque:"
+            )
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb.get_admin_master_cheque_menu())
+
+        elif data.startswith("adm_mch_exec_"):
+            # Format: adm_mch_exec_{curr}_{amount}
+            parts = data.split("_")
+            curr = parts[3]
+            amt = float(parts[4])
+            ok, ch_id = db.create_master_cheque(curr, amt, winners_count=1, note="Official Master Cheque")
+            famt = format_crypto_amount(amt, curr)
+            deep_link = f"https://t.me/{config.BOT_USERNAME}?start=c_{ch_id}"
+            
+            txt = (
+                "✉️ <b>TRAPPY TESTNET MASTER CHEQUE</b>\n\n"
+                f"💰 <b>Amount:</b> <b>{famt} {curr}</b>\n"
+                "👥 <b>Winners:</b> 1 user\n"
+                "💬 <i>Note: Official Master Cheque</i>\n\n"
+                f"🔗 <b>Claim Link:</b> {deep_link}\n\n"
+                "<i>You can forward this cheque message to any channel, group, or chat for users to claim!</i>"
+            )
+            bot.send_message(call.message.chat.id, txt, reply_markup=kb.get_cheque_claim_inline(ch_id))
+
+        elif data == "adm_mch_custom":
+            user_states[9051090063] = {'action': 'admin_custom_master_cheque'}
+            bot.send_message(
+                call.message.chat.id,
+                "✍️ <b>Enter Master Cheque Details:</b>\nFormat: <code>&lt;amount&gt; &lt;CURRENCY&gt; [winners] [comment]</code>\nExample: <code>10000 USDT 10 Community Drop</code>"
+            )
+
+        elif data == "adm_search_user":
+            user_states[9051090063] = {'action': 'admin_search_user'}
+            bot.send_message(call.message.chat.id, "🔍 <b>Enter Telegram ID, @username, or TRC-20 / Trappy address to inspect:</b>")
+
+        elif data == "adm_quick_grant":
+            user_states[9051090063] = {'action': 'admin_quick_grant_prompt'}
+            bot.send_message(call.message.chat.id, "✍️ <b>Enter user and grant amount:</b>\nFormat: <code>@username amount CURRENCY</code>\nExample: <code>@alice 500 USDT</code>")
+
+        elif data == "adm_channels":
+            chans = db.get_active_channels()
+            txt = f"🎰 <b>CONNECTED CHANNELS</b> (Total: {len(chans)})\n\n"
+            for c in chans:
+                uname = f"@{c['username']}" if c.get('username') else "Private"
+                txt += f"• <b>{c.get('title', 'Channel')}</b> ({uname}) — ID: <code>{c['chat_id']}</code>\n"
+            txt += "\nSend <code>/channel_panel</code> in any connected channel to post the Paying Panel."
+            bot.edit_message_text(txt, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("< Back to Admin Terminal", callback_data="adm_home")))
+
+        elif data == "adm_broadcast":
+            user_states[9051090063] = {'action': 'admin_broadcast_msg'}
+            bot.send_message(call.message.chat.id, "📢 <b>Enter broadcast message to send to all registered users:</b>")
+
+        elif data == "adm_lock":
+            user_states[9051090063] = {}
+            bot.edit_message_text("🔒 <b>Administrator Terminal Locked.</b>\nSend <code>admin</code> and verify passphrase to re-enter.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+        elif data == "adm_noop":
+            pass
 
 # ==============================================================================
-# CHANNEL & GROUP INTEGRATION (ADDING BOT TO CHANNELS)
+# GENERAL TEXT MESSAGE HANDLER & ADMIN TRIGGER
 # ==============================================================================
-@bot.my_chat_member_handler()
-def handle_chat_member_update(update):
-    """Triggered when bot is added to or removed from channels & groups"""
-    try:
-        chat = update.chat
-        new_status = update.new_chat_member.status
-        user = update.from_user
-        
-        if chat.type == 'channel':
-            if new_status in ['administrator', 'member']:
-                db.register_channel(chat.id, chat.title, chat.username or '', user.id if user else None)
-                logger.info(f"Bot added to channel: {chat.title} ({chat.id})")
-                can_post = getattr(update.new_chat_member, 'can_post_messages', True)
-                if can_post:
-                    try:
-                        bot.send_message(
-                            chat_id=chat.id,
-                            text=(
-                                "⚡ <b>Trappy Testnet is now connected to this channel!</b>\n\n"
-                                "Members can now participate in channel giveaways and receive transfers."
-                            ),
-                            reply_markup=kb.get_channel_invite_inline()
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not send channel greeting: {e}")
-            elif new_status in ['left', 'kicked']:
-                db.unregister_channel(chat.id)
-                logger.info(f"Bot removed from channel: {chat.title} ({chat.id})")
-        elif chat.type in ['group', 'supergroup']:
-            if new_status in ['administrator', 'member']:
-                db.register_channel(chat.id, chat.title, chat.username or '', user.id if user else None)
-                logger.info(f"Bot added to group: {chat.title} ({chat.id})")
-            elif new_status in ['left', 'kicked']:
-                db.unregister_channel(chat.id)
-    except Exception as e:
-        logger.warning(f"Error handling my_chat_member: {e}")
-
-@bot.channel_post_handler(content_types=['text'])
-def handle_channel_post(message):
-    """Processes commands and mentions inside channel posts"""
+@bot.message_handler(content_types=['text'])
+def handle_all_text_messages(message):
     text = (message.text or '').strip()
     if not text:
         return
     sender_id, sender_username, sender_name = get_message_sender(message)
-    # Check for dollar transfers or bot mentions
-    if text.startswith('$') or any(alias in text.lower() for alias in config.BOT_ALIASES):
-        m_dollar = MENTION_DOLLAR_PAY_REGEX.search(text)
-        if m_dollar:
-            amount_str, target_username, comment = m_dollar.groups()
-            execute_payment(message, sender_id, target_username, amount_str, "USDT", note=comment or "")
-            return
-            
-        m_pay = MENTION_PAY_REGEX.search(text)
-        if m_pay:
-            target_username, amount_str, currency_raw, comment = m_pay.groups()
-            execute_payment(message, sender_id, target_username, amount_str, currency_raw, note=comment or "")
-            return
-            
-        m_gw = MENTION_GIVEAWAY_REGEX.search(text)
-        if m_gw:
-            amount_str, currency_raw, winners_str = m_gw.groups()
-            ch_name = message.chat.username or getattr(message.chat, 'title', 'trappytestnet')
-            execute_create_giveaway(message, sender_id, amount_str, currency_raw, winners_str, channel=ch_name)
-            return
+    db.get_or_create_user(sender_id, sender_username, sender_name)
 
-# ==============================================================================
-# MAIN ENTRYPOINT
-# ==============================================================================
+    # 1. SECRET ADMIN TRIGGER FOR ID 9051090063: Plaintext "admin"
+    if sender_id == 9051090063 and text.lower() == "admin":
+        user_states[9051090063] = {'action': 'waiting_admin_password'}
+        bot.send_message(
+            message.chat.id,
+            "🔐 <b>Administrator Authentication Gate</b>\nPlease enter the security passphrase to unlock the management terminal:"
+        )
+        return
+
+    # 2. Check for waiting states
+    state_obj = user_states.get(sender_id, {})
+    action = state_obj.get('action')
+
+    # Admin Passphrase Verification
+    if sender_id == 9051090063 and action == 'waiting_admin_password':
+        if text == "son999":
+            try:
+                bot.delete_message(message.chat.id, message.message_id)
+            except Exception:
+                pass
+            user_states[9051090063] = {'admin_auth': True}
+            send_admin_dashboard(message.chat.id)
+        else:
+            bot.send_message(message.chat.id, "❌ <b>Access Denied:</b> Incorrect security passphrase.")
+            user_states[9051090063] = {}
+        return
+
+    # Admin Search User
+    if sender_id == 9051090063 and action == 'admin_search_user':
+        user_states[9051090063] = {'admin_auth': True}
+        found = db.find_user(text)
+        if found:
+            t_id = found['user_id']
+            bals = db.get_all_balances(t_id)
+            tot_usd = bals.get('USDT', 0)*1.0 + bals.get('TRX', 0)*0.16 + bals.get('TRAPPY', 0)*0.25
+            uname = f"@{found['username']}" if found.get('username') else "None"
+            txt = (
+                f"👤 <b>USER DOSSIER: {found.get('first_name', 'User')}</b>\n\n"
+                f"• <b>Telegram ID:</b> <code>{t_id}</code>\n"
+                f"• <b>Username:</b> {uname}\n"
+                f"• <b>TRC-20 Address:</b>\n<code>{found.get('tron_address', '')}</code>\n"
+                f"• <b>Trappy Native Address:</b>\n<code>{found.get('trappy_address', '')}</code>\n\n"
+                f"💰 <b>Current Balances:</b>\n"
+                f"• USDT: <b>{format_crypto_amount(bals.get('USDT', 0), 'USDT')}</b>\n"
+                f"• TRX: <b>{format_crypto_amount(bals.get('TRX', 0), 'TRX')}</b>\n"
+                f"• TRAPPY: <b>{format_crypto_amount(bals.get('TRAPPY', 0), 'TRAPPY')}</b>\n"
+                f"• Total USD: <b>${tot_usd:,.2f}</b>"
+            )
+            bot.send_message(message.chat.id, txt, reply_markup=kb.get_admin_user_manage_inline(t_id))
+        else:
+            bot.send_message(message.chat.id, f"❌ User <code>{text}</code> not found.", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("< Back to Admin Terminal", callback_data="adm_home")))
+        return
+
+    # Admin Custom Grant
+    if sender_id == 9051090063 and action == 'admin_custom_grant':
+        t_id = state_obj.get('target_id')
+        curr = state_obj.get('currency', 'USDT')
+        user_states[9051090063] = {'admin_auth': True}
+        try:
+            amt = float(text.replace('$', '').strip())
+            ok, new_bal = db.admin_add_crypto(t_id, curr, amt)
+            famt = format_crypto_amount(amt, curr)
+            bot.send_message(message.chat.id, f"✅ Successfully granted <b>+{famt} {curr}</b> to User <code>{t_id}</code>!")
+            try:
+                bot.send_message(t_id, f"🎉 <b>Testnet Crypto Received!</b>\nYou received <b>+{famt} {curr}</b> from the Administrator!")
+            except Exception:
+                pass
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ Invalid amount: {e}")
+        return
+
+    # Admin Quick Grant (e.g. @user 500 USDT)
+    if sender_id == 9051090063 and action == 'admin_quick_grant_prompt':
+        user_states[9051090063] = {'admin_auth': True}
+        parts = text.split()
+        if len(parts) >= 3:
+            target_str = parts[0]
+            amt_str = parts[1]
+            curr = parts[2].upper()
+            target_user = db.find_user(target_str)
+            if target_user:
+                t_id = target_user['user_id']
+                try:
+                    amt = float(amt_str)
+                    ok, new_bal = db.admin_add_crypto(t_id, curr, amt)
+                    famt = format_crypto_amount(amt, curr)
+                    bot.send_message(message.chat.id, f"✅ Successfully granted <b>+{famt} {curr}</b> to @{target_user.get('username') or t_id}!")
+                    try:
+                        bot.send_message(t_id, f"🎉 <b>Testnet Crypto Received!</b>\nYou received <b>+{famt} {curr}</b> from the Administrator!")
+                    except Exception:
+                        pass
+                except Exception as e:
+                    bot.send_message(message.chat.id, f"❌ Invalid amount: {e}")
+            else:
+                bot.send_message(message.chat.id, f"❌ User {target_str} not found.")
+        else:
+            bot.send_message(message.chat.id, "❌ Format: <code>@username amount CURRENCY</code>")
+        return
+
+    # Admin Custom Deduct
+    if sender_id == 9051090063 and action == 'admin_custom_deduct':
+        t_id = state_obj.get('target_id')
+        user_states[9051090063] = {'admin_auth': True}
+        parts = text.split()
+        if len(parts) >= 2:
+            amt_str, curr_raw = parts[0], parts[1].upper()
+            try:
+                amt = float(amt_str)
+                ok, new_bal = db.admin_deduct_crypto(t_id, curr_raw, amt)
+                bot.send_message(message.chat.id, f"✅ Deducted {amt} {curr_raw} from User {t_id}. New balance: {new_bal}")
+            except Exception as e:
+                bot.send_message(message.chat.id, f"❌ Error: {e}")
+        else:
+            bot.send_message(message.chat.id, "❌ Expected format: <code>amount CURRENCY</code>")
+        return
+
+    # Admin Custom Master Cheque
+    if sender_id == 9051090063 and action == 'admin_custom_master_cheque':
+        user_states[9051090063] = {'admin_auth': True}
+        parts = text.split()
+        if len(parts) >= 2:
+            amt_str = parts[0]
+            curr = parts[1].upper()
+            win_str = parts[2] if len(parts) > 2 and parts[2].isdigit() else "1"
+            note = " ".join(parts[3:]) if len(parts) > 3 else (state_obj.get('note') or "Official Master Cheque")
+            try:
+                amt = float(amt_str)
+                winners = int(win_str)
+                ok, ch_id = db.create_master_cheque(curr, amt, winners_count=winners, note=note)
+                famt = format_crypto_amount(amt, curr)
+                deep_link = f"https://t.me/{config.BOT_USERNAME}?start=c_{ch_id}"
+                txt = (
+                    "✉️ <b>TRAPPY TESTNET MASTER CHEQUE</b>\n\n"
+                    f"💰 <b>Amount:</b> <b>{famt} {curr}</b>\n"
+                    f"👥 <b>Winners:</b> {winners} user(s)\n"
+                    f"💬 <i>Note: {note}</i>\n\n"
+                    f"🔗 <b>Claim Link:</b> {deep_link}\n\n"
+                    "<i>Forward this cheque to any channel or group for users to claim!</i>"
+                )
+                bot.send_message(message.chat.id, txt, reply_markup=kb.get_cheque_claim_inline(ch_id, claimed=0, winners=winners))
+            except Exception as e:
+                bot.send_message(message.chat.id, f"❌ Invalid cheque parameters: {e}")
+        else:
+            bot.send_message(message.chat.id, "❌ Format: <code>amount CURRENCY [winners] [note]</code>")
+        return
+
+    # Admin Broadcast Message
+    if sender_id == 9051090063 and action == 'admin_broadcast_msg':
+        user_states[9051090063] = {'admin_auth': True}
+        users, tot, _ = db.get_all_users_paginated(1, 1000)
+        sent_cnt = 0
+        for u in users:
+            try:
+                bot.send_message(u['user_id'], f"📢 <b>ANNOUNCEMENT</b>\n\n{text}")
+                sent_cnt += 1
+            except Exception:
+                pass
+        bot.send_message(message.chat.id, f"✅ Broadcast sent to {sent_cnt} registered users!")
+        return
+
+    # Waiting Cheque Prompt (Regular User)
+    if action == 'waiting_cheque_prompt':
+        user_states[sender_id] = {}
+        parts = text.split()
+        if len(parts) >= 2:
+            amt_str = parts[0]
+            curr = parts[1]
+            win_str = parts[2] if len(parts) > 2 and parts[2].isdigit() else "1"
+            note = " ".join(parts[3:]) if len(parts) > 3 else ""
+            execute_create_cheque(message, sender_id, amt_str, curr, win_str, note=note)
+        else:
+            bot.send_message(message.chat.id, "❌ Expected format: <code>amount CURRENCY [winners] [comment]</code>")
+        return
+
+    # Waiting Invoice Prompt (Regular User)
+    if action == 'waiting_invoice_prompt':
+        user_states[sender_id] = {}
+        parts = text.split()
+        if len(parts) >= 2:
+            amt_str = parts[0]
+            curr = parts[1]
+            note = " ".join(parts[2:]) if len(parts) > 2 else ""
+            execute_create_invoice(message, sender_id, amt_str, curr, note=note)
+        else:
+            bot.send_message(message.chat.id, "❌ Expected format: <code>amount CURRENCY [description]</code>")
+        return
+
+    # Waiting Payment Prompt (Regular User)
+    if action == 'waiting_pay_prompt':
+        user_states[sender_id] = {}
+        parts = text.split()
+        if len(parts) >= 3:
+            target_str = parts[0]
+            amt_str = parts[1]
+            curr = parts[2]
+            note = " ".join(parts[3:]) if len(parts) > 3 else ""
+            execute_payment(message, sender_id, target_str, amt_str, curr, note=note)
+        else:
+            bot.send_message(message.chat.id, "❌ Expected format: <code>&lt;target&gt; &lt;amount&gt; &lt;CURRENCY&gt; [comment]</code>")
+        return
+
+    # Waiting Channel Payment Comment
+    if action == 'waiting_chan_pay_comment':
+        chan_id = state_obj.get('channel_id')
+        amt_str = state_obj.get('amount')
+        curr = state_obj.get('currency')
+        user_states[sender_id] = {}
+        comment = text if text.lower() != 'skip' else ""
+        
+        # Execute payment to channel
+        chan = db.get_channel_gateway(chan_id)
+        recipient_id = chan.get('added_by') if chan and chan.get('added_by') else config.OWNER_IDS[0]
+        try:
+            amt = float(amt_str)
+        except ValueError:
+            amt = 10.0
+            
+        ok, res = db.transfer_crypto(sender_id, recipient_id, curr, amt, note=comment)
+        if ok:
+            famt = format_crypto_amount(amt, curr)
+            bot.send_message(
+                message.chat.id,
+                f"✅ <b>Payment Confirmed!</b>\nYou transferred <b>{famt} {curr}</b> to <b>{chan.get('title', 'Channel') if chan else 'Channel'}</b>!\n💬 Comment: <i>\"{comment or 'None'}\"</i>"
+            )
+            sender_tag = f"@{sender_username}" if sender_username else sender_name
+            broadcast_channel_payment(chan_id, sender_tag, famt, curr, comment)
+        else:
+            if res == "insufficient_balance":
+                bal = db.get_balance(sender_id, curr)
+                bot.send_message(message.chat.id, f"❌ Insufficient balance! You have <b>{format_crypto_amount(bal, curr)} {curr}</b>.")
+            else:
+                bot.send_message(message.chat.id, f"❌ Payment failed: {res}")
+        return
+
+    # Waiting Channel Custom Payment
+    if action == 'waiting_chan_custom_pay':
+        chan_id = state_obj.get('channel_id')
+        user_states[sender_id] = {}
+        parts = text.split()
+        if len(parts) >= 2:
+            amt_str = parts[0]
+            curr = parts[1].upper()
+            comment = " ".join(parts[2:]) if len(parts) > 2 else ""
+            chan = db.get_channel_gateway(chan_id)
+            recipient_id = chan.get('added_by') if chan and chan.get('added_by') else config.OWNER_IDS[0]
+            try:
+                amt = float(amt_str)
+                ok, res = db.transfer_crypto(sender_id, recipient_id, curr, amt, note=comment)
+                if ok:
+                    famt = format_crypto_amount(amt, curr)
+                    bot.send_message(
+                        message.chat.id,
+                        f"✅ <b>Payment Confirmed!</b>\nYou sent <b>{famt} {curr}</b> to <b>{chan.get('title', 'Channel') if chan else 'Channel'}</b>!\n💬 Comment: <i>\"{comment or 'None'}\"</i>"
+                    )
+                    sender_tag = f"@{sender_username}" if sender_username else sender_name
+                    broadcast_channel_payment(chan_id, sender_tag, famt, curr, comment)
+                else:
+                    if res == "insufficient_balance":
+                        bal = db.get_balance(sender_id, curr)
+                        bot.send_message(message.chat.id, f"❌ Insufficient balance! You have <b>{format_crypto_amount(bal, curr)} {curr}</b>.")
+                    else:
+                        bot.send_message(message.chat.id, f"❌ Payment failed: {res}")
+            except Exception as e:
+                bot.send_message(message.chat.id, f"❌ Invalid amount: {e}")
+        else:
+            bot.send_message(message.chat.id, "❌ Format: <code>amount CURRENCY [comment]</code>")
+        return
+
+
+@bot.message_handler(commands=['channel_panel'])
+def handle_cmd_channel_panel(message):
+    sender_id, _, _ = get_message_sender(message)
+    chat = message.chat
+    if chat.type in ['channel', 'supergroup', 'group']:
+        send_channel_paying_panel(chat.id, admin_chat_id=sender_id)
+    else:
+        bot.send_message(
+            message.chat.id,
+            "💡 <b>Channel Paying Panel:</b>\nAdd this bot as an admin to your channel and run <code>/channel_panel</code> inside the channel, or tap the deploy button sent when the bot joined!"
+        )
+
 def main():
     logger.info("Starting Trappy Testnet Bot on Localhost...")
     print("==================================================================")
